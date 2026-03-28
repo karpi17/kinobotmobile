@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="8dp">
+
+    <!-- Kwota straty -->
+    <TextView
+        android:id="@+id/tv_loss_amount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:textColor="?attr/colorError" />
+
+    <!-- Opis -->
+    <TextView
+        android:id="@+id/tv_loss_description"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textSize="13sp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:layout_marginStart="8dp"
+        android:ellipsize="end"
+        android:maxLines="1" />
+
+    <!-- Data -->
+    <TextView
+        android:id="@+id/tv_loss_date"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:textColor="?android:attr/textColorSecondary" />
+
+</LinearLayout>

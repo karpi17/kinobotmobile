@@ -1,0 +1,22 @@
+# Zabezpieczenia (KRYTYCZNE)
+credentials.json
+*.jks
+*.keystore
+local.properties
+
+# Pliki konfiguracyjne IDE
+.idea/
+.gradle/
+*.iml
+local.properties
+
+# Pliki generowane podczas kompilacji
+build/
+app/build/
+*/build/
+out/
+
+# Logi i pliki tymczasowe
+*.log
+*.tmp
+bot.py

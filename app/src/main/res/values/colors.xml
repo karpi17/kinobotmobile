@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ═══ Cinema City Branding ═══ -->
+    <color name="colorPrimary">#FF6600</color>
+    <color name="colorBackground">#000000</color>
+    <color name="colorSurface">#1A1A1A</color>
+    <color name="colorSurfaceVariant">#333333</color>
+
+    <color name="colorOnPrimary">#FFFFFF</color>
+
+    <!-- Error -->
+    <color name="md_error">#FFB00020</color>
+    <color name="md_error_dark">#FFCF6679</color>
+
+    <!-- Neutralne -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

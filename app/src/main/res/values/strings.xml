@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Asystent Kinowy</string>
+
+    <!-- Google Sign-In -->
+    <string name="sign_in_failed">Logowanie nieudane (kod: %1$d)</string>
+    <string name="sign_in_error">Błąd logowania Google</string>
+    <string name="signed_in_as">Zalogowano jako %1$s</string>
+    <string name="signed_in_ready">Zalogowano: %1$s — Gmail API gotowe</string>
+    <string name="token_error">Nie udało się pobrać tokena dostępu</string>
+    <string name="sync_schedule">Synchronizuj Grafik</string>
+</resources>

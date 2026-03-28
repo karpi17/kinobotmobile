@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".ui.ScheduleFragment">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+        
+        <!-- Wybierak miesiąca -->
+        <LinearLayout
+            android:id="@+id/ll_month_selector"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="8dp"
+            android:layout_gravity="top">
+
+            <ImageButton
+                android:id="@+id/btn_prev_month"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@android:drawable/ic_media_previous"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Poprzedni miesiąc" />
+
+            <TextView
+                android:id="@+id/tv_current_month"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:text="Marzec 2026"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:gravity="center" />
+
+            <ImageButton
+                android:id="@+id/btn_next_month"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@android:drawable/ic_media_next"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Następny miesiąc" />
+        </LinearLayout>
+
+        <!-- Nagłówek i Eksport -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_schedule_header"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Grafik"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_export_calendar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Eksportuj"
+                app:backgroundTint="#FF6600"
+                app:icon="@android:drawable/ic_menu_today" />
+        </LinearLayout>
+
+        <!-- Komunikat o pustej liście -->
+        <TextView
+            android:id="@+id/tv_schedule_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="Brak zmian — zsynchronizuj grafik na Pulpicie"
+            android:textSize="15sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:visibility="gone" />
+
+        <!-- Lista zmian -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_shifts"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="80dp" />
+
+    </LinearLayout>
+
+    <!-- FAB — dodaj zmianę -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab_add_shift"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:contentDescription="Dodaj zmianę"
+        app:tint="?attr/colorOnPrimary"
+        app:srcCompat="@android:drawable/ic_input_add" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

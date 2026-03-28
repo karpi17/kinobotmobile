@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/nav_dashboard"
+        android:icon="@drawable/ic_home"
+        android:title="Pulpit" />
+
+    <item
+        android:id="@+id/nav_schedule"
+        android:icon="@drawable/ic_calendar"
+        android:title="Grafik" />
+
+    <item
+        android:id="@+id/nav_finance"
+        android:icon="@drawable/ic_finance"
+        android:title="Finanse" />
+
+</menu>

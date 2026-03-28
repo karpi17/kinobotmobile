@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_margin="8dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="?attr/colorSurfaceVariant"
+    app:cardBackgroundColor="?attr/colorSurface">
+
+    <LinearLayout
+        android:id="@+id/layout_next_shift_data"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Najbliższa zmiana"
+            android:textAppearance="?attr/textAppearanceLabelMedium"
+            android:textColor="?attr/colorPrimary"
+            android:textAllCaps="true"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tv_next_shift_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Jutro"
+            android:textAppearance="?attr/textAppearanceHeadline5"
+            android:textStyle="bold"
+            android:textColor="?attr/colorOnSurface" />
+
+        <TextView
+            android:id="@+id/tv_next_shift_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="14:00 - 22:30"
+            android:textAppearance="?attr/textAppearanceTitleMedium"
+            android:textColor="?android:attr/textColorSecondary"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip_next_shift_desc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="BAR"
+            app:chipBackgroundColor="?attr/colorSecondaryContainer"
+            android:textColor="?attr/colorOnSecondaryContainer" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/layout_no_next_shift"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@android:drawable/ic_menu_today"
+            app:tint="?android:attr/textColorSecondary"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Brak zaplanowanych zmian"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textColor="?android:attr/textColorSecondary" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>
