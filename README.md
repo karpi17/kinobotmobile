@@ -1,99 +1,27 @@
-# 👨‍💻 Kacper Wernerowicz — Interaktywne E-CV
+Cinema Assistant 🎬📊
+A comprehensive, native Android application designed specifically for cinema employees to automate shift scheduling, track working hours, and analyze financial goals.
 
-[![Live Demo](https://img.shields.io/badge/🌐_Demo-Online-4CAF50?style=for-the-badge)](https://snazzy-chaja-20f64f.netlify.app/)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://react.dev/)
-[![Bootstrap](https://img.shields.io/badge/Bootstrap-5.3-7952B3?style=for-the-badge&logo=bootstrap)](https://getbootstrap.com/)
-[![Netlify Status](https://img.shields.io/badge/Deploy-Netlify-00C7B7?style=for-the-badge&logo=netlify)](https://snazzy-chaja-20f64f.netlify.app/)
+🚀 Key Features
+Automated Schedule Parsing: Integrates with the Gmail API (OAuth 2.0) to asynchronously download and parse .xlsx schedule attachments in the background using Apache POI.
+Smart Data Merging: Intelligently merges new shifts from Excel with the user's manual modifications (e.g., shift covers/replacements) without overwriting manual data.
+Financial Analytics & Dashboard: Features a dynamic Glassmorphism UI with a ViewPager2 carousel, displaying relative time to the next shift and a Donut Chart tracking the monthly working hours goal.
+Local Persistence: Utilizes Room Database for robust local storage, including custom migrations and an archive for monthly financial reports.
+System Integrations: Leverages AlarmManager for push notifications before shifts and allows seamless export to the native Google Calendar.
+🛠 Tech Stack
+Language: Java
+Architecture: MVVM (Model-View-ViewModel)
+Local Database: Room (SQLite)
+Networking & Auth: Retrofit, Gson, Google Play Services Auth (OAuth2), Gmail API
+UI/UX: Material Design 3, Glassmorphism aesthetic, MPAndroidChart, ViewPager2
+⚙️ Getting Started (Local Setup)
+To run this project locally, you need to configure your own Google Cloud Console project:
 
-Responsywna strona-portfolio zbudowana w **React 18** z profesjonalnym designem, trybem ciemnym i deploymentem na Netlify. Aplikacja prezentuje doświadczenie zawodowe, umiejętności techniczne, certyfikaty państwowe i projekty programistyczne w nowoczesnym, czytelnym formacie.
-
----
-
-## ✨ Funkcje
-
-- 🌗 **Tryb ciemny / jasny** — z zapisem preferencji w `localStorage`
-- 🏷️ **System badge'ów** — umiejętności przedstawione jako profesjonalne odznaki z legendą (Codzienny stack / Doświadczenie)
-- 🏆 **Karty certyfikatów** — INF.03 i INF.04 jako Achievement Cards z listą kompetencji i statusem
-- ⏱️ **Zegar cyfrowy** — aktualny czas w nagłówku
-- 📱 **Responsive design** — optymalizacja dla urządzeń mobilnych
-- 🎯 **SEO** — meta tagi Open Graph, Twitter Card, semantyczny HTML
-- 💚 **Spójny design system** — zielone akcenty, karty z lewym border, hover effects
-
-## 📸 Podgląd
-
-| Light Mode | Dark Mode |
-|:-:|:-:|
-| ![Light](https://via.placeholder.com/400x250/F8F9FA/2A2A2A?text=Light+Mode) | ![Dark](https://via.placeholder.com/400x250/121212/E0E0E0?text=Dark+Mode) |
-
-> 💡 *Zamień placeholdery na rzeczywiste screenshoty po deploymencie.*
-
-## 🛠️ Stack technologiczny
-
-| Technologia | Zastosowanie |
-|---|---|
-| **React 18** | UI framework (komponentowa architektura) |
-| **Bootstrap 5.3** | System gridowy, karty, badge'e, responsywność |
-| **react-icons** | Ikony (FontAwesome, SimpleIcons, Devicons) |
-| **react-awesome-reveal** | Animacje wejścia sekcji |
-| **CSS3** | Custom design system (dark mode, hover effects, zmienne CSS) |
-| **Netlify** | Hosting i CI/CD |
-
-## 📁 Struktura projektu
-
-```
-src/
-├── components/         # Komponenty React
-│   ├── Header.jsx      # Nagłówek — karta wizytówkowa z dark mode toggle
-│   ├── Projects.jsx    # Karty projektów z badge'ami technologii
-│   ├── Experience.jsx  # Timeline doświadczenia z checkmarkami
-│   ├── Education.jsx   # Karty wykształcenia (grid 2-kolumnowy)
-│   ├── Skills.jsx      # Badge'e umiejętności + karty soft skills
-│   ├── Certificates.jsx# Achievement cards INF.03 / INF.04
-│   ├── Languages.jsx   # Poziomy językowe z badge'ami
-│   ├── Contact.jsx     # Dane kontaktowe
-│   ├── Footer.jsx      # Stopka z klauzulą RODO
-│   └── DigitalClock.jsx# Komponent zegara
-├── data/               # Dane (oddzielone od widoków)
-│   ├── experience.js
-│   ├── education.js
-│   ├── skills.js
-│   ├── certificates.js
-│   ├── projects.js
-│   ├── languages.js
-│   └── contact.js
-├── styles/
-│   └── App.css         # Design system + dark mode overridy
-└── index.js            # Entry point + Bootstrap CSS import
-```
-
-## 🚀 Uruchomienie lokalne
-
-```bash
-# Klonowanie repozytorium
-git clone https://github.com/karpi17/cv.git
-cd cv
-
-# Instalacja zależności
-npm install
-
-# Serwer deweloperski
-npm start
-```
-
-Aplikacja będzie dostępna pod adresem `http://localhost:3000`.
-
-## 📦 Build produkcyjny
-
-```bash
-npm run build
-```
-
-## 📝 Licencja
-
-Projekt prywatny — wszelkie prawa zastrzeżone © 2026 Kacper Wernerowicz.
-
----
-
-<p align="center">
-  Zbudowane z 💚 w <strong>React</strong>
-</p>
+Clone the repository: git clone https://github.com/YourUsername/cinema-assistant-android.git
+Go to Google Cloud Console and create a new project.
+Enable the Gmail API.
+Configure the OAuth Consent Screen and add your testing email addresses to the "Test users" list.
+Create OAuth 2.0 Client IDs for Android and download the credentials.json (ensure this is kept out of version control).
+Build and run the app in Android Studio.
+🗺 Roadmap (Future Integrations)
+ USOS API Integration: Connect the app with the university's REST API (USOS) to automatically correlate work shifts with the student's academic timetable, preventing scheduling conflicts.
+ Home Screen Widget: A dynamic widget showing a countdown to the next shift.
