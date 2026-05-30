@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -24,9 +26,47 @@
             </intent-filter>
         </activity>
 
+        <!-- Full-Screen Alarm Ringing Activity -->
+        <activity
+            android:name=".alarm.AlarmRingingActivity"
+            android:exported="false"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.AsystentKinowy" />
+
         <receiver
             android:name=".notifications.ShiftNotificationReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".alarm.ShiftAlarmReceiver"
+            android:exported="false" />
+
+        <!-- Reschedule alarmów po restarcie telefonu -->
+        <receiver
+            android:name=".alarm.BootAlarmReceiver"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Widget: Najbliższa Zmiana -->
+        <receiver
+            android:name=".widget.ShiftWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.asystent.kinowy.WIDGET_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/shift_widget_info" />
+        </receiver>
 
     </application>
 

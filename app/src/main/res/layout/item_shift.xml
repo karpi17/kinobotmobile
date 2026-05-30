@@ -20,7 +20,7 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:src="@drawable/ic_calendar"
-            app:tint="?attr/colorPrimary"
+            app:tint="#FF6600"
             app:layout_constraintTop_toTopOf="@+id/tv_shift_date"
             app:layout_constraintBottom_toBottomOf="@+id/tv_shift_date"
             app:layout_constraintStart_toStartOf="parent" />
@@ -33,9 +33,22 @@
             android:layout_marginStart="8dp"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="#FFFFFF"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toEndOf="@+id/iv_calendar_icon"
+            app:layout_constraintEnd_toStartOf="@+id/tv_moon_icon" />
+
+        <!-- 🌙 Ikona zamka (widoczna tylko dla nocnych zmian) -->
+        <TextView
+            android:id="@+id/tv_moon_icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🌙"
+            android:textSize="16sp"
+            android:visibility="gone"
+            android:layout_marginEnd="8dp"
+            app:layout_constraintTop_toTopOf="@+id/tv_shift_date"
+            app:layout_constraintBottom_toBottomOf="@+id/tv_shift_date"
             app:layout_constraintEnd_toStartOf="@+id/chip_shift_description" />
 
         <!-- Ikona zegara -->
@@ -44,7 +57,7 @@
             android:layout_width="16dp"
             android:layout_height="16dp"
             android:src="@android:drawable/ic_menu_recent_history"
-            app:tint="?android:attr/textColorSecondary"
+            app:tint="#AAAAAA"
             android:layout_marginTop="6dp"
             app:layout_constraintTop_toBottomOf="@+id/tv_shift_date"
             app:layout_constraintStart_toStartOf="@+id/iv_calendar_icon"
@@ -58,7 +71,7 @@
             android:layout_marginStart="8dp"
             android:layout_marginTop="4dp"
             android:textSize="14sp"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="#AAAAAA"
             app:layout_constraintTop_toBottomOf="@+id/tv_shift_date"
             app:layout_constraintStart_toEndOf="@+id/iv_time_icon"
             app:layout_constraintEnd_toStartOf="@+id/chip_shift_description" />
@@ -70,11 +83,25 @@
             android:layout_height="wrap_content"
             android:clickable="false"
             android:textStyle="bold"
-            android:textColor="@android:color/white"
-            app:chipBackgroundColor="#B00020"
+            android:textColor="#FFFFFF"
+            app:chipBackgroundColor="#FF6600"
             app:chipStrokeWidth="0dp"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintBottom_toBottomOf="@+id/tv_shift_hours"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- Ekipa zamykająca (widoczna tylko dla nocnych zmian z ekipą) -->
+        <TextView
+            android:id="@+id/tv_closing_crew"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textSize="13sp"
+            android:textColor="#CCCCCC"
+            android:drawablePadding="4dp"
+            android:visibility="gone"
+            app:layout_constraintTop_toBottomOf="@+id/tv_shift_hours"
+            app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>

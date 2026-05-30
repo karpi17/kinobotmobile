@@ -10,6 +10,12 @@ import androidx.lifecycle.ViewModelProvider;
 import com.asystent.kinowy.R;
 import com.asystent.kinowy.viewmodel.MainViewModel;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.os.SystemClock;
 
 /**
  * Główna aktywność aplikacji Asystent Kinowy.
@@ -34,8 +40,14 @@ public class MainActivity extends AppCompatActivity {
     private final FinanceFragment financeFragment = new FinanceFragment();
     private Fragment activeFragment;
 
+    // --- Easter Egg: 7 kliknięć ---
+    private long[] mHits = new long[7];
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        if (savedInstanceState != null) {
+            savedInstanceState.remove("android:support:fragments");
+        }
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -45,6 +57,20 @@ public class MainActivity extends AppCompatActivity {
         // --- Bottom Navigation ---
         BottomNavigationView bottomNav = findViewById(R.id.bottom_navigation);
         setupBottomNavigation(bottomNav);
+
+        // --- Easter Egg (Konami Code na Toolbarze) ---
+        View toolbar = findViewById(R.id.toolbar_main);
+        if (toolbar != null) {
+            toolbar.setOnClickListener(v -> {
+                System.arraycopy(mHits, 1, mHits, 0, mHits.length - 1);
+                mHits[mHits.length - 1] = SystemClock.uptimeMillis();
+                if (mHits[0] >= (SystemClock.uptimeMillis() - 3000)) {
+                    // Wyczyszczenie, by nie odpalało w kółko
+                    mHits = new long[7];
+                    checkEasterEgg();
+                }
+            });
+        }
 
         // --- Domyślny fragment ---
         if (savedInstanceState == null) {
@@ -98,5 +124,23 @@ public class MainActivity extends AppCompatActivity {
 
             return true;
         });
+    }
+
+    private void checkEasterEgg() {
+        GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(this);
+        if (account != null && account.getEmail() != null) {
+            String email = account.getEmail();
+            if ("kacperwerner05@gmail.com".equals(email)) {
+                showHallOfFame();
+            }
+        }
+    }
+
+    private void showHallOfFame() {
+        View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_hall_of_fame, null);
+        new MaterialAlertDialogBuilder(this)
+                .setView(dialogView)
+                .setPositiveButton("Dzięki!", null)
+                .show();
     }
 }

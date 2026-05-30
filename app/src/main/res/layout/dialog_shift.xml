@@ -1,80 +1,198 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="24dp">
+    android:layout_height="wrap_content">
 
-    <!-- Data -->
-    <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Data (yyyy-MM-dd)"
-        android:layout_marginBottom="12dp">
+        android:orientation="vertical"
+        android:padding="24dp">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/et_shift_date"
+        <!-- Data -->
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="date"
-            android:maxLines="1" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:hint="Data (yyyy-MM-dd)"
+            android:layout_marginBottom="12dp">
 
-    <!-- Godzina Startu -->
-    <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Godzina Start (HH:mm)"
-        android:layout_marginBottom="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_shift_date"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="date"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/et_shift_start"
+        <!-- Godzina Startu -->
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="time"
-            android:maxLines="1" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:hint="Godzina Start (HH:mm)"
+            android:layout_marginBottom="12dp">
 
-    <!-- Godzina Końca -->
-    <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Godzina Koniec (HH:mm)"
-        android:layout_marginBottom="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_shift_start"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="time"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/et_shift_end"
+        <!-- Godzina Końca -->
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="time"
-            android:maxLines="1" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:hint="Godzina Koniec (HH:mm)"
+            android:layout_marginBottom="12dp">
 
-    <!-- Opis -->
-    <com.google.android.material.textfield.TextInputLayout
-        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Opis"
-        android:layout_marginBottom="4dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_shift_end"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="time"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/et_shift_desc"
+        <!-- Stanowisko / Kategoria -->
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
-            android:maxLines="1" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:hint="Stanowisko (np. BAR, OW)"
+            android:layout_marginBottom="12dp">
 
-    <!-- Oddaję tę zmianę -->
-    <com.google.android.material.switchmaterial.SwitchMaterial
-        android:id="@+id/switch_replacement"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Oddaję tę zmianę (nie wliczaj do wypłaty)"
-        android:layout_marginTop="16dp" />
+            <AutoCompleteTextView
+                android:id="@+id/et_shift_category"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:completionThreshold="1"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-</LinearLayout>
+        <!-- Ekipa zamykająca — TextInputLayout + MultiAutoCompleteTextView -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/til_closing_crew"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="🌙 Ekipa zamykająca (np. Kacper W., Ola G.)"
+            android:visibility="gone"
+            android:layout_marginBottom="4dp">
+
+            <MultiAutoCompleteTextView
+                android:id="@+id/et_closing_crew"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:maxLines="1"
+                android:completionThreshold="1"
+                android:dropDownWidth="match_parent"
+                android:popupBackground="#2A2A2A" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Oddaję tę zmianę -->
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switch_replacement"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Oddaję tę zmianę (nie wliczaj do wypłaty)"
+            android:layout_marginTop="16dp" />
+
+        <!-- ═════════════════════════════════════════════════════════ -->
+        <!-- Sekcja: Budzik przed zmianą                             -->
+        <!-- ═════════════════════════════════════════════════════════ -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="12dp"
+            android:background="#333333" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switch_alarm"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⏰ Budzik przed zmianą"
+            android:textColor="#FF6600"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/til_alarm_offset"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Wyprzedzenie budzika"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="4dp"
+            android:visibility="gone">
+
+            <AutoCompleteTextView
+                android:id="@+id/et_alarm_offset"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="none"
+                android:maxLines="1"
+                android:completionThreshold="100" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- ═════════════════════════════════════════════════════════ -->
+        <!-- Sekcja: Współpracownicy w tym dniu (Edytowalna lista)  -->
+        <!-- ═════════════════════════════════════════════════════════ -->
+        <LinearLayout
+            android:id="@+id/layout_coworkers_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginBottom="12dp"
+                android:background="#333333" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:text="👥 Współpracownicy w tym czasie"
+                android:textColor="#FF6600"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:text="Kliknij, aby edytować godziny"
+                android:textColor="#888888"
+                android:textSize="11sp" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_coworkers_list"
+                android:layout_width="match_parent"
+                android:layout_height="250dp"
+                 />
+            <Button
+                android:id="@+id/btn_add_coworker"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp"
+                android:backgroundTint="#333333"
+                android:text="+ Dodaj osobę"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

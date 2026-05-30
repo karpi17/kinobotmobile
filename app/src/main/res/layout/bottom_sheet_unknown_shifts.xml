@@ -5,7 +5,7 @@
     android:orientation="vertical"
     android:paddingTop="16dp"
     android:paddingBottom="24dp"
-    android:background="?attr/colorSurface">
+    android:background="#1E1E1E">
 
     <TextView
         android:layout_width="match_parent"
@@ -13,8 +13,9 @@
         android:layout_marginHorizontal="16dp"
         android:layout_marginBottom="16dp"
         android:text="Niesklasyfikowane Zmiany"
-        android:textAppearance="?attr/textAppearanceHeadline6"
-        android:textColor="?attr/colorOnSurface" />
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_unknown_shifts"

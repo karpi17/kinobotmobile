@@ -1,13 +1,15 @@
 package com.asystent.kinowy.models;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;
+import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
 @Entity(tableName = "monthly_reports")
 public class MonthlyReport {
-    
+
     @PrimaryKey
     @NonNull
     @ColumnInfo(name = "monthYear")
@@ -22,15 +24,23 @@ public class MonthlyReport {
     @ColumnInfo(name = "calculatedSalary")
     private double calculatedSalary;
 
+    @Nullable
     @ColumnInfo(name = "actualSalary")
-    private double actualSalary;
+    private Double actualSalary;
 
-    public MonthlyReport(@NonNull String monthYear, double calculatedHours, double paperHours, double calculatedSalary, double actualSalary) {
+    // Pełny konstruktor (Room uses this one)
+    public MonthlyReport(@NonNull String monthYear, double calculatedHours, double paperHours, double calculatedSalary, @Nullable Double actualSalary) {
         this.monthYear = monthYear;
         this.calculatedHours = calculatedHours;
         this.paperHours = paperHours;
         this.calculatedSalary = calculatedSalary;
         this.actualSalary = actualSalary;
+    }
+
+    // Konstruktor I stopnia — bez kwoty przelewu
+    @Ignore
+    public MonthlyReport(@NonNull String monthYear, double calculatedHours, double paperHours, double calculatedSalary) {
+        this(monthYear, calculatedHours, paperHours, calculatedSalary, null);
     }
 
     @NonNull
@@ -46,6 +56,7 @@ public class MonthlyReport {
     public double getCalculatedSalary() { return calculatedSalary; }
     public void setCalculatedSalary(double calculatedSalary) { this.calculatedSalary = calculatedSalary; }
 
-    public double getActualSalary() { return actualSalary; }
-    public void setActualSalary(double actualSalary) { this.actualSalary = actualSalary; }
+    @Nullable
+    public Double getActualSalary() { return actualSalary; }
+    public void setActualSalary(@Nullable Double actualSalary) { this.actualSalary = actualSalary; }
 }

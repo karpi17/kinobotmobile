@@ -8,4 +8,19 @@
     <string name="signed_in_ready">Zalogowano: %1$s — Gmail API gotowe</string>
     <string name="token_error">Nie udało się pobrać tokena dostępu</string>
     <string name="sync_schedule">Synchronizuj Grafik</string>
+
+    <!-- Widget -->
+    <string name="widget_description">Najbliższa zmiana i ekipa na pulpicie</string>
+
+    <!-- Alarm Ringing -->
+    <string name="alarm_title_wakeup">⏰ Czas do pracy!</string>
+    <string name="alarm_shift_placeholder">Zmiana o: --:--</string>
+    <string name="alarm_shift_info">Zmiana o: %1$s</string>
+    <string name="alarm_btn_stop">WSTAŁEM</string>
+    <string name="alarm_btn_snooze">DRZEMKA 10 MIN</string>
+    <string name="alarm_icon_desc">Ikona alarmu</string>
+    <string name="alarm_channel_name">Budzik Zmianowy</string>
+    <string name="alarm_channel_desc">Powiadomienia alarmu budzika przed zmianą</string>
+    <string name="alarm_notification_title">⏰ Budzik — Czas do pracy!</string>
+    <string name="alarm_notification_text">Zmiana o %1$s (%2$s)</string>
 </resources>

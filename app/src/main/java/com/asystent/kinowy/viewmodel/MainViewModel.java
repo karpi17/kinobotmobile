@@ -11,6 +11,8 @@ import androidx.lifecycle.MediatorLiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.asystent.kinowy.models.Loss;
+import com.asystent.kinowy.models.ActiveEmployee;
+import com.asystent.kinowy.models.GlobalShift;
 import com.asystent.kinowy.models.Shift;
 import com.asystent.kinowy.models.Tip;
 import com.asystent.kinowy.network.ExcelParsingService;
@@ -63,6 +65,8 @@ public class MainViewModel extends AndroidViewModel {
     // ─── Serwisy ─────────────────────────────────────────────────────────
 
     private final ExcelParsingService excelParsingService;
+    private final com.asystent.kinowy.db.EmployeeDao employeeDao;
+    private final com.asystent.kinowy.db.GlobalShiftDao globalShiftDao;
     private final ExecutorService executor;
 
     // ─── LiveData ────────────────────────────────────────────────────────
@@ -80,6 +84,12 @@ public class MainViewModel extends AndroidViewModel {
     // --- Raporty ---
     private final MutableLiveData<String> missingReportAlert;
 
+    // --- AutoComplete ekipa zamykająca (V3: z global_shifts) ---
+    private final LiveData<List<String>> closingCrewSuggestions;
+
+    // --- Współpracownicy najbliższej zmiany (overlap z global_shifts) ---
+    private final MediatorLiveData<String> nextShiftCoworkers;
+
     // ─── Finanse ─────────────────────────────────────────────────────────
 
     private final MutableLiveData<Float> hourlyRateLive;
@@ -89,11 +99,14 @@ public class MainViewModel extends AndroidViewModel {
     private final MediatorLiveData<List<Tip>> monthlyTips;
     private final MutableLiveData<YearMonth> currentSelectedMonth;
 
+
     /** Nazwisko użytkownika w grafiku (ustawiane z ustawień / po rejestracji) */
     private String targetUserName;
 
     // ─── Konstruktor ─────────────────────────────────────────────────────
-
+    public LiveData<Float> getHourlyRateLive() {
+        return hourlyRateLive;
+    }
     public MainViewModel(@NonNull Application application) {
         super(application);
         currentSelectedMonth = new MutableLiveData<>(java.time.YearMonth.now());
@@ -102,6 +115,8 @@ public class MainViewModel extends AndroidViewModel {
         tipRepository = new TipRepository(application);
         gmailRepository = new GmailRepository();
         excelParsingService = new ExcelParsingService();
+        employeeDao = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).employeeDao();
+        globalShiftDao = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).globalShiftDao();
         executor = Executors.newSingleThreadExecutor();
 
         allShifts = shiftRepository.getAllShifts();
@@ -112,6 +127,8 @@ public class MainViewModel extends AndroidViewModel {
         syncStatus = new MutableLiveData<>();
         unknownShifts = new MediatorLiveData<>();
         missingReportAlert = new MutableLiveData<>();
+        closingCrewSuggestions = globalShiftDao.getActiveEmployeeNames();
+        nextShiftCoworkers = new MediatorLiveData<>();
 
         // ─── Finanse ─────────────────────────────────────────────────
         hourlyRateLive = new MutableLiveData<>(0f);
@@ -163,6 +180,7 @@ public class MainViewModel extends AndroidViewModel {
      * allShifts, allLosses, hourlyRateLive oraz currentSelectedMonth
      * — i przelicza wypłatę za bieżący miesiąc.
      */
+
     private void setupPayrollCalculation() {
         monthlyPayroll.addSource(allShifts, shifts -> recalculatePayroll());
         monthlyPayroll.addSource(allLosses, losses -> recalculatePayroll());
@@ -263,6 +281,23 @@ public class MainViewModel extends AndroidViewModel {
             }
             nextShift.setValue(upcoming);
         });
+
+        // ─── Overlap: przelicz współpracowników gdy zmienia się nextShift ───
+        nextShiftCoworkers.addSource(nextShift, shift -> {
+            if (shift == null || shift.getDate() == null
+                    || shift.getStartTime() == null || shift.getEndTime() == null) {
+                nextShiftCoworkers.setValue(null);
+                return;
+            }
+            executor.execute(() -> {
+                List<GlobalShift> dailyShifts = globalShiftDao.getShiftsByDate(shift.getDate());
+                List<GlobalShift> overlapping = com.asystent.kinowy.utils.ShiftUtils
+                        .getOverlappingShifts(shift.getStartTime(), shift.getEndTime(), dailyShifts);
+                String formatted = com.asystent.kinowy.utils.ShiftUtils
+                        .formatOverlappingShifts(overlapping);
+                nextShiftCoworkers.postValue(formatted);
+            });
+        });
     }
 
     /**
@@ -339,7 +374,7 @@ public class MainViewModel extends AndroidViewModel {
     /**
      * Zwraca prefiks wybranego miesiąca w formacie "yyyy-MM" do filtrowania dat ISO.
      */
-    private String getCurrentMonthPrefix() {
+    public String getCurrentMonthPrefix() {
         YearMonth selected = currentSelectedMonth.getValue();
         if (selected == null) selected = YearMonth.now();
         return String.format("%04d-%02d", selected.getYear(), selected.getMonthValue());
@@ -447,7 +482,7 @@ public class MainViewModel extends AndroidViewModel {
 
         executor.execute(() -> {
             com.asystent.kinowy.db.AppDatabase db = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication());
-            com.asystent.kinowy.models.MonthlyReport report = db.monthlyReportDao().getReportByMonth(monthYear);
+            com.asystent.kinowy.models.MonthlyReport report = db.monthlyReportDao().getReportForMonthSync(monthYear);
             if (report == null) {
                 String displayMonth = lastMonth.getMonth().getDisplayName(java.time.format.TextStyle.FULL, new java.util.Locale("pl", "PL"));
                 displayMonth = displayMonth.substring(0, 1).toUpperCase() + displayMonth.substring(1);
@@ -460,6 +495,103 @@ public class MainViewModel extends AndroidViewModel {
 
     public void refreshMissingReportCheck() {
         checkMissingMonthlyReport();
+    }
+
+    // ─── Globalny Grafik (V3 — Single Source of Truth) ────────────────
+
+    /**
+     * Zapisuje pełny grafik ekipy do tabeli {@code global_shifts}.
+     * <p>
+     * Wywoływane po każdym udanym parsowaniu pliku .xlsx.
+     * {@code INSERT OR IGNORE} chroni przed duplikatami.
+     * Jednocześnie zasila stary słownik {@code active_employees}
+     * (zachowujemy kompatybilność wsteczną).
+     *
+     * @param result pełny wynik parsowania z ExcelParsingService
+     */
+    private void populateGlobalShifts(ExcelParsingService.ParseResult result) {
+        if (result == null) return;
+        executor.execute(() -> {
+            // 1. Globalny grafik (nowy)
+            List<GlobalShift> globalShifts = ExcelParsingService.generateGlobalShifts(result);
+            if (!globalShifts.isEmpty()) {
+                globalShiftDao.insertAllSafe(globalShifts);
+                Log.d(TAG, "Global shifts zapisano (safe): " + globalShifts.size() + " rekordów");
+            }
+
+            // 2. Stary słownik (kompatybilność wsteczna)
+            List<String> names = ExcelParsingService.getFormattedEmployeeNames(result);
+            for (String name : names) {
+                employeeDao.insertOrIgnore(new ActiveEmployee(name));
+            }
+        });
+    }
+
+    /**
+     * Pobiera zmiany globalnego grafiku dla danej daty.
+     * <b>Synchroniczne</b> — wywoływać na wątku w tle.
+     *
+     * @param date data w formacie yyyy-MM-dd
+     * @return lista GlobalShift dla tego dnia
+     */
+    public List<GlobalShift> getGlobalShiftsByDate(String date) {
+        return globalShiftDao.getShiftsByDate(date);
+    }
+
+    /**
+     * Aktualizuje zmianę globalną (ręczna edycja godzin współpracownika).
+     * Ustawia flagę isManuallyEdited = true automatycznie.
+     * Wywoływane na wątku w tle.
+     */
+    public void updateGlobalShift(GlobalShift gs) {
+        executor.execute(() -> {
+            gs.setManuallyEdited(true);
+            globalShiftDao.updateGlobalShift(gs);
+            // Odśwież widżet
+            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+        });
+    }
+
+    /**
+     * Usuwa zmianę globalną (ręczne usunięcie współpracownika ze zmiany).
+     * Wywoływane na wątku w tle.
+     */
+    public void deleteGlobalShift(GlobalShift gs) {
+        executor.execute(() -> {
+            // Soft delete — rekord zostaje w bazie, blokując parser przed ponownym wstawieniem
+            gs.setDeleted(true);
+            gs.setManuallyEdited(true);
+            globalShiftDao.updateGlobalShift(gs);
+            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+        });
+    }
+
+    /**
+     * Wstawia nową zmianę globalną (ręczne dodanie współpracownika).
+     * Automatycznie ustawia isManuallyEdited = true.
+     * Wywoływane na wątku w tle.
+     *
+     * @param gs nowy obiekt GlobalShift
+     * @param onComplete callback po udanym zapisie (wywoływany na main thread)
+     */
+    public void insertGlobalShift(GlobalShift gs, Runnable onComplete) {
+        executor.execute(() -> {
+            gs.setManuallyEdited(true);
+            globalShiftDao.insertGlobalShift(gs);
+            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+
+            if (onComplete != null) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(onComplete);
+            }
+        });
+    }
+
+    /**
+     * LiveData z unikalnymi imionami do podpowiedzi w MultiAutoCompleteTextView.
+     * Źródło: tabela global_shifts (Single Source of Truth, V3).
+     */
+    public LiveData<List<String>> getClosingCrewSuggestions() {
+        return closingCrewSuggestions;
     }
 
     public LiveData<String> getSyncStatus() {
@@ -476,6 +608,57 @@ public class MainViewModel extends AndroidViewModel {
         return targetUserName;
     }
 
+    // ─── Alarm — toggle i odczyt stanu ─────────────────────────────────
+
+    /**
+     * Przełącza alarm dla zmiany identyfikowanej przez datę i godzinę startu.
+     * <p>
+     * Aktualizuje flagi {@code has_alarm} i {@code alarm_offset_minutes} w DAO,
+     * następnie ustawia lub anuluje alarm w {@link com.asystent.kinowy.alarm.AlarmScheduler}.
+     * <p>
+     * <b>Wywoływane na wątku w tle.</b>
+     *
+     * @param date         data zmiany (yyyy-MM-dd)
+     * @param startTime    godzina startu (HH:mm)
+     * @param hasAlarm     true = włącz alarm, false = wyłącz
+     * @param offsetMinutes wyprzedzenie w minutach (30, 60, 90, 120)
+     */
+    public void toggleAlarmForShift(String date, String startTime,
+                                    boolean hasAlarm, int offsetMinutes) {
+        executor.execute(() -> {
+            // 1. Aktualizuj flagi w bazie
+            globalShiftDao.updateAlarmState(date, startTime, hasAlarm, offsetMinutes);
+
+            // 2. Pobierz zaktualizowany obiekt (potrzebny do AlarmScheduler)
+            GlobalShift gs = globalShiftDao.getShiftByDateAndStart(date, startTime);
+            if (gs == null) {
+                Log.w(TAG, "toggleAlarmForShift: brak GlobalShift dla " + date + " " + startTime);
+                return;
+            }
+
+            // 3. Zaplanuj lub anuluj alarm
+            if (hasAlarm) {
+                com.asystent.kinowy.alarm.AlarmScheduler.scheduleOneOffAlarm(getApplication(), gs);
+                Log.i(TAG, "🔔 Alarm WŁĄCZONY: " + date + " " + startTime + " (-" + offsetMinutes + "min)");
+            } else {
+                com.asystent.kinowy.alarm.AlarmScheduler.cancelAlarm(getApplication(), gs);
+                Log.i(TAG, "🔕 Alarm WYŁĄCZONY: " + date + " " + startTime);
+            }
+        });
+    }
+
+    /**
+     * Odpytuje bazę o stan alarmu dla zmiany (synchronicznie).
+     * <b>Wywoływać na wątku w tle.</b>
+     *
+     * @param date      data zmiany (yyyy-MM-dd)
+     * @param startTime godzina startu (HH:mm)
+     * @return GlobalShift z flagami alarmu, lub null jeśli nie znaleziono
+     */
+    public GlobalShift getAlarmStateForShift(String date, String startTime) {
+        return globalShiftDao.getShiftByDateAndStart(date, startTime);
+    }
+
     // ─── Shift — operacje zapisu ─────────────────────────────────────────
 
     public void insertShift(Shift shift) { shiftRepository.insert(shift); }
@@ -489,6 +672,14 @@ public class MainViewModel extends AndroidViewModel {
 
     public LiveData<Shift> getNextShift() {
         return nextShift;
+    }
+
+    /**
+     * LiveData z sformatowaną listą współpracowników najbliższej zmiany.
+     * Null jeśli brak danych lub brak overlapping.
+     */
+    public LiveData<String> getNextShiftCoworkers() {
+        return nextShiftCoworkers;
     }
 
     public MutableLiveData<Integer> getMonthlyHoursGoal() {
@@ -592,6 +783,14 @@ public class MainViewModel extends AndroidViewModel {
                                         try {
                                             byte[] fileBytes = Base64.decode(base64Data, Base64.URL_SAFE);
                                             InputStream inputStream = new ByteArrayInputStream(fileBytes);
+
+                                            // Najpierw parsuj pełny grafik — do zasilenia słownika
+                                            InputStream fullParseStream = new ByteArrayInputStream(fileBytes);
+                                            ExcelParsingService.ParseResult fullResult =
+                                                    excelParsingService.parseFullSchedule(fullParseStream);
+                                            populateGlobalShifts(fullResult);
+
+                                            // Następnie wyciągnij zmiany użytkownika
                                             List<Shift> parsed = excelParsingService.parseSchedule(inputStream, targetUserName);
                                             accumulatedShifts.addAll(parsed);
                                         } catch (Exception e) {
@@ -679,6 +878,10 @@ public class MainViewModel extends AndroidViewModel {
                 syncStatus.postValue("success:" + finalShifts.size());
                 Log.d(TAG, "Multi-Sync complete. Merged " + finalShifts.size() + " total shifts.");
 
+                // Odśwież widżet na pulpicie
+                com.asystent.kinowy.widget.ShiftWidgetProvider
+                        .triggerUpdate(getApplication());
+
             } catch (Exception e) {
                 Log.e(TAG, "Error saving merged schedule", e);
                 syncStatus.postValue("error:" + e.getMessage());
@@ -752,4 +955,5 @@ public class MainViewModel extends AndroidViewModel {
             }
         }
     }
+
 }

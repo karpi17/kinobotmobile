@@ -37,8 +37,11 @@ public class AlarmScheduler {
             // Walidacja podstawowa
             if (shift.getDate() == null || shift.getStartTime() == null || shift.getEndTime() == null) continue;
 
-            // Jeśli oddałeś tę zmianę komuś innemu, nie ustawiamy dla niej alarmu!
-            if (shift.isReplacement()) continue;
+            // Jeśli oddałeś tę zmianę komuś innemu, anuluj i nie ustawiamy alarmu!
+            if (shift.isReplacement()) {
+                cancelAlarmsForShift(context, shift);
+                continue;
+            }
 
             String startStr = shift.getStartTime().trim();
             String endStr = shift.getEndTime().trim();
@@ -72,10 +75,93 @@ public class AlarmScheduler {
                 }
 
             } catch (Exception e) {
-                // Jeśli parsowanie czasu jakimś cudem zawiedzie, logujemy błąd i ignorujemy tę zmianę.
-                // Dzięki temu aplikacja nie zcrashuje się przy starcie!
                 Log.e(TAG, "Błąd parsowania czasu dla zmiany ID: " + shift.getId() + ". Start: " + startStr, e);
             }
+        }
+    }
+
+    /**
+     * Planuje alarm dla jednej edytowanej zmiany — najpierw anuluje stare alarmy,
+     * a następnie planuje nowe na zaktualizowany czas.
+     *
+     * @param context kontekst
+     * @param shift   zmiana po edycji
+     */
+    public static void rescheduleForShift(Context context, Shift shift) {
+        // 1. Anuluj stare alarmy (START + END)
+        cancelAlarmsForShift(context, shift);
+
+        // 2. Nie planujemy alarmów dla oddanych zmian
+        if (shift.isReplacement()) return;
+
+        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager == null) return;
+
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        int notifyBeforeMinutes = prefs.getInt(PREF_NOTIFY_BEFORE, 60);
+        LocalDateTime now = LocalDateTime.now();
+
+        if (shift.getDate() == null || shift.getStartTime() == null || shift.getEndTime() == null) return;
+
+        String startStr = shift.getStartTime().trim();
+        String endStr = shift.getEndTime().trim();
+        if (startStr.length() == 4 && startStr.charAt(1) == ':') startStr = "0" + startStr;
+        if (endStr.length() == 4 && endStr.charAt(1) == ':') endStr = "0" + endStr;
+
+        try {
+            LocalDate date = LocalDate.parse(shift.getDate());
+            LocalTime start = LocalTime.parse(startStr);
+            LocalTime end = LocalTime.parse(endStr);
+
+            LocalDateTime shiftStart = LocalDateTime.of(date, start);
+            LocalDateTime shiftEnd = LocalDateTime.of(date, end);
+            if (end.isBefore(start)) shiftEnd = shiftEnd.plusDays(1);
+
+            LocalDateTime notifyStart = shiftStart.minusMinutes(notifyBeforeMinutes);
+            if (notifyStart.isAfter(now)) {
+                scheduleExactAlarm(context, alarmManager, shift, "START", notifyStart);
+            }
+            if (shiftEnd.isAfter(now)) {
+                scheduleExactAlarm(context, alarmManager, shift, "END", shiftEnd);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Błąd reschedule dla zmiany ID: " + shift.getId(), e);
+        }
+    }
+
+    /**
+     * Anuluje oba alarmy (START + END) dla danej zmiany.
+     * Używa tego samego requestCode co scheduleExactAlarm, więc PendingIntent się zgadza.
+     *
+     * @param context kontekst
+     * @param shift   zmiana do anulowania
+     */
+    public static void cancelAlarmsForShift(Context context, Shift shift) {
+        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager == null) return;
+
+        // Anuluj alarm START
+        cancelSingleAlarm(context, alarmManager, shift, "START");
+        // Anuluj alarm END
+        cancelSingleAlarm(context, alarmManager, shift, "END");
+
+        Log.d(TAG, "Anulowano alarmy dla zmiany ID: " + shift.getId());
+    }
+
+    private static void cancelSingleAlarm(Context context, AlarmManager alarmManager, Shift shift, String type) {
+        Intent intent = new Intent(context, ShiftNotificationReceiver.class);
+        int requestCode = (int) shift.getId() + type.hashCode();
+
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                context,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent);
+            pendingIntent.cancel();
         }
     }
 

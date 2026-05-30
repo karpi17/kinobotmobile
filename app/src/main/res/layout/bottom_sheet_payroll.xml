@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="24dp"
-    android:background="?attr/colorSurface"
+    android:background="#1E1E1E"
     app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
 
     <!-- Handle drag indicator -->
@@ -13,7 +13,7 @@
         android:layout_width="40dp"
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
-        android:background="?attr/colorOutline"
+        android:background="#555555"
         android:layout_marginBottom="16dp" />
 
     <LinearLayout
@@ -27,26 +27,27 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:src="@android:drawable/ic_secure"
-            app:tint="?attr/colorPrimary"
+            app:tint="#FF6600"
             android:layout_marginEnd="16dp" />
 
         <TextView
+            android:id="@+id/tv_report_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Podsumowanie Miesiąca"
-            android:textAppearance="?attr/textAppearanceHeadline5"
-            android:textColor="?attr/colorOnSurface"
-            android:textStyle="bold" />
+            android:text="Weryfikacja Wypłaty"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF" />
     </LinearLayout>
 
-    <!-- Details Section -->
     <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:cardElevation="0dp"
         app:strokeWidth="1dp"
-        app:strokeColor="?attr/colorSurfaceVariant"
-        app:cardBackgroundColor="?attr/colorSurface">
+        app:strokeColor="#333333"
+        app:cardBackgroundColor="#2A2A2A"
+        android:layout_marginBottom="16dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -54,7 +55,6 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- Łączne Godziny -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -65,65 +65,20 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Łączne godziny (BAR/OW):"
-                    android:textColor="?android:attr/textColorSecondary" />
+                    android:text="Godziny wyliczone (z aplikacji):"
+                    android:textSize="14sp"
+                    android:textColor="#AAAAAA" />
 
                 <TextView
-                    android:id="@+id/tv_total_hours"
+                    android:id="@+id/tv_calc_hours"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="0 h"
+                    android:text="0.0 h"
+                    android:textSize="14sp"
                     android:textStyle="bold"
-                    android:textColor="?attr/colorOnSurface" />
+                    android:textColor="#FFFFFF" />
             </LinearLayout>
 
-            <!-- Kwota bez podatku do ręki -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Do ręki (gotówka):"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <TextView
-                    android:id="@+id/tv_tax_free_amount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0.00 zł"
-                    android:textStyle="bold"
-                    android:textColor="?attr/colorOnSurface" />
-            </LinearLayout>
-
-            <!-- Kwota na przelew -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Przelew (na konto):"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <TextView
-                    android:id="@+id/tv_taxable_amount"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="0.00 zł"
-                    android:textStyle="bold"
-                    android:textColor="?attr/colorOnSurface" />
-            </LinearLayout>
-
-            <!-- Zsumowane straty -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -133,59 +88,91 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Zarejestrowane straty (manko):"
-                    android:textColor="?android:attr/textColorSecondary" />
+                    android:text="Przewidywana wypłata:"
+                    android:textSize="14sp"
+                    android:textColor="#AAAAAA" />
 
                 <TextView
-                    android:id="@+id/tv_total_losses"
+                    android:id="@+id/tv_calc_salary"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="-0.00 zł"
+                    android:text="0.00 zł"
+                    android:textSize="14sp"
                     android:textStyle="bold"
-                    android:textColor="?attr/colorError" />
+                    android:textColor="#FFFFFF" />
             </LinearLayout>
 
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/colorOutline"
-        android:layout_marginTop="24dp"
-        android:layout_marginBottom="24dp" />
-
-    <!-- Ostateczna kwota -->
-    <LinearLayout
+    <!-- KROK 1: Godziny z papierka -->
+    <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="16dp">
+        android:hint="Godziny z papierka (grafik)"
+        android:layout_marginBottom="4dp"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
-        <TextView
-            android:layout_width="0dp"
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/et_paper_hours"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Do wypłaty:"
-            android:textAppearance="?attr/textAppearanceTitleLarge"
-            android:textColor="?attr/colorOnSurface" />
+            android:inputType="numberDecimal" />
+    </com.google.android.material.textfield.TextInputLayout>
 
-        <TextView
-            android:id="@+id/tv_final_payout"
-            android:layout_width="wrap_content"
+    <!-- Reaktywne wyliczenie: paperHours * stawka -->
+    <TextView
+        android:id="@+id/tv_paper_salary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Należy się z papierka: --"
+        android:textSize="14sp"
+        android:textColor="#AAAAAA"
+        android:layout_marginBottom="12dp"
+        android:paddingStart="4dp" />
+
+    <!-- KROK 2 (opcjonalny): Faktyczna kwota przelewu -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Faktyczna kwota przelewu (opcjonalna)"
+        android:layout_marginBottom="16dp"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/et_actual_salary"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="0.00 zł"
-            android:textAppearance="?attr/textAppearanceHeadline4"
-            android:textStyle="bold"
-            android:textColor="#4CAF50" /> <!-- Green text for positive outcome -->
-    </LinearLayout>
+            android:inputType="numberDecimal" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Różnica: aktualizowana po wpisaniu kwoty przelewu -->
+    <TextView
+        android:id="@+id/tv_difference"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Różnica: --"
+        android:textAlignment="center"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="#888888"
+        android:layout_marginBottom="24dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_save_report"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ZAPISZ RAPORT"
+        app:backgroundTint="#FF6600"
+        android:textColor="#FFFFFF"
+        app:icon="@android:drawable/ic_menu_save"
+        app:iconGravity="textStart" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_dismiss_payroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Zamknij"
-        style="@style/Widget.Material3.Button.TonalButton" />
+        android:text="Anuluj"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
 </LinearLayout>

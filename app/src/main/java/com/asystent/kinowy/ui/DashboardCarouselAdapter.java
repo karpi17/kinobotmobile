@@ -24,18 +24,24 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
     private static final int TYPE_ANALYTICS = 1;
 
     private Shift nextShift;
-    private double currentHours = 0;
-    private double goalHours = 100;
+    private String coworkersText; // sformatowana lista współpracowników
+    private double barHours = 0;
+    private double owHours = 0;
 
     public void updateNextShift(Shift shift) {
         this.nextShift = shift;
         notifyItemChanged(TYPE_SHIFT);
     }
 
-    public void updateAnalytics(double current, double goal) {
-        this.currentHours = current;
-        this.goalHours = goal;
+    public void updateAnalytics(double bar, double ow) {
+        this.barHours = bar;
+        this.owHours = ow;
         notifyItemChanged(TYPE_ANALYTICS);
+    }
+
+    public void updateCoworkers(String coworkers) {
+        this.coworkersText = coworkers;
+        notifyItemChanged(TYPE_SHIFT);
     }
 
     @Override
@@ -57,9 +63,9 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         if (getItemViewType(position) == TYPE_SHIFT) {
-            ((ShiftViewHolder) holder).bind(nextShift);
+            ((ShiftViewHolder) holder).bind(nextShift, coworkersText);
         } else {
-            ((AnalyticsViewHolder) holder).bind(currentHours, goalHours);
+            ((AnalyticsViewHolder) holder).bind(barHours, owHours);
         }
     }
 
@@ -71,6 +77,9 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
     static class ShiftViewHolder extends RecyclerView.ViewHolder {
         View layoutData, layoutNoData;
         TextView tvDate, tvTime;
+        TextView tvMoonIcon, tvClosingCrew;
+        View dividerCoworkers;
+        TextView tvCoworkersLabel, tvCoworkers;
         Chip chipDesc;
 
         public ShiftViewHolder(@NonNull View itemView) {
@@ -80,9 +89,14 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
             tvDate = itemView.findViewById(R.id.tv_next_shift_date);
             tvTime = itemView.findViewById(R.id.tv_next_shift_time);
             chipDesc = itemView.findViewById(R.id.chip_next_shift_desc);
+            tvMoonIcon = itemView.findViewById(R.id.tv_carousel_moon_icon);
+            tvClosingCrew = itemView.findViewById(R.id.tv_carousel_closing_crew);
+            dividerCoworkers = itemView.findViewById(R.id.divider_coworkers);
+            tvCoworkersLabel = itemView.findViewById(R.id.tv_carousel_coworkers_label);
+            tvCoworkers = itemView.findViewById(R.id.tv_carousel_coworkers);
         }
 
-        void bind(Shift shift) {
+        void bind(Shift shift, String coworkers) {
             if (shift == null) {
                 layoutData.setVisibility(View.GONE);
                 layoutNoData.setVisibility(View.VISIBLE);
@@ -91,28 +105,63 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
                 layoutNoData.setVisibility(View.GONE);
                 tvDate.setText(shift.getDate());
                 tvTime.setText(shift.getStartTime() + " - " + shift.getEndTime());
-                chipDesc.setText(shift.getRole() != null && !shift.getRole().isEmpty() ? shift.getRole() : shift.getCategory());
+                chipDesc.setText(shift.getDescription() != null && !shift.getDescription().isEmpty() ? shift.getDescription() : shift.getCategory());
+
+                // 🌙 Zamek
+                if (tvMoonIcon != null) {
+                    tvMoonIcon.setVisibility(shift.isClosingShift() ? View.VISIBLE : View.GONE);
+                }
+
+                // Ekipa zamykająca
+                if (tvClosingCrew != null) {
+                    String crew = shift.getClosingCrew();
+                    if (crew != null && !crew.isEmpty()) {
+                        tvClosingCrew.setText("🧑‍🤝‍🧑 Ekipa: " + crew);
+                        tvClosingCrew.setVisibility(View.VISIBLE);
+                    } else {
+                        tvClosingCrew.setVisibility(View.GONE);
+                    }
+                }
+
+                // Współpracownicy (overlap z global_shifts)
+                if (coworkers != null && !coworkers.isEmpty()) {
+                    if (dividerCoworkers != null) dividerCoworkers.setVisibility(View.VISIBLE);
+                    if (tvCoworkersLabel != null) tvCoworkersLabel.setVisibility(View.VISIBLE);
+                    if (tvCoworkers != null) {
+                        tvCoworkers.setText(coworkers);
+                        tvCoworkers.setVisibility(View.VISIBLE);
+                    }
+                } else {
+                    if (dividerCoworkers != null) dividerCoworkers.setVisibility(View.GONE);
+                    if (tvCoworkersLabel != null) tvCoworkersLabel.setVisibility(View.GONE);
+                    if (tvCoworkers != null) tvCoworkers.setVisibility(View.GONE);
+                }
             }
         }
     }
 
     static class AnalyticsViewHolder extends RecyclerView.ViewHolder {
         PieChart pieChart;
+        TextView tvFraction;
 
         public AnalyticsViewHolder(@NonNull View itemView) {
             super(itemView);
             pieChart = itemView.findViewById(R.id.chart_hours_donut);
+            tvFraction = itemView.findViewById(R.id.tv_donut_fraction);
             setupChart();
         }
 
         private void setupChart() {
+            pieChart.setTouchEnabled(false);
             pieChart.setUsePercentValues(false);
             pieChart.getDescription().setEnabled(false);
             pieChart.setDrawHoleEnabled(true);
+            pieChart.setHoleRadius(85f);
             pieChart.setHoleColor(android.graphics.Color.TRANSPARENT);
             pieChart.setTransparentCircleRadius(0f);
             pieChart.setDrawCenterText(true);
-            pieChart.setCenterTextSize(18f);
+            pieChart.setCenterText("BAR vs OW");
+            pieChart.setCenterTextSize(16f);
             pieChart.setCenterTextColor(android.graphics.Color.WHITE);
             pieChart.getLegend().setEnabled(false);
             pieChart.setRotationEnabled(false);
@@ -120,28 +169,36 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
             pieChart.setDrawEntryLabels(false);
         }
 
-        void bind(double current, double goal) {
-            pieChart.setCenterText(String.format(java.util.Locale.US, "%.1f / %.0f h", current, goal));
+        void bind(double bar, double ow) {
+            // Ensure at least a placeholder slice when both are zero
+            float barVal = (float) bar;
+            float owVal  = (float) ow;
+            if (barVal <= 0 && owVal <= 0) {
+                barVal = 1f;
+                owVal  = 1f;
+            }
 
             ArrayList<PieEntry> entries = new ArrayList<>();
-            float remaining = (float) Math.max(0, goal - current);
-            entries.add(new PieEntry((float) current, "Zrobione"));
-            if (remaining > 0) {
-                entries.add(new PieEntry(remaining, "Pozostało"));
-            }
+            entries.add(new PieEntry(barVal, "BAR"));
+            entries.add(new PieEntry(owVal,  "OW"));
 
             PieDataSet dataSet = new PieDataSet(entries, "");
             dataSet.setDrawValues(false);
-            
-            ArrayList<Integer> colors = new ArrayList<>();
-            colors.add(android.graphics.Color.parseColor("#FF6600")); // Primary Cinema City Orange
-            colors.add(android.graphics.Color.parseColor("#333333")); // Dark gray remainder
+            dataSet.setSliceSpace(2f);
 
+            ArrayList<Integer> colors = new ArrayList<>();
+            colors.add(android.graphics.Color.parseColor("#FF6600")); // BAR — neonowy pomarańcz
+            colors.add(android.graphics.Color.parseColor("#222222")); // OW  — ciemny szary
             dataSet.setColors(colors);
 
             PieData data = new PieData(dataSet);
             pieChart.setData(data);
             pieChart.invalidate();
+
+            if (tvFraction != null) {
+                tvFraction.setText(String.format(java.util.Locale.US,
+                        "BAR: %.1fh  |  OW: %.1fh", bar, ow));
+            }
         }
     }
 }

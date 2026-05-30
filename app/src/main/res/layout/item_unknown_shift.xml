@@ -5,9 +5,11 @@
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="16dp"
     android:layout_marginVertical="8dp"
-    app:cardBackgroundColor="?attr/colorSurface"
+    app:cardBackgroundColor="#1E1E1E"
     app:cardCornerRadius="12dp"
-    app:cardElevation="2dp">
+    app:cardElevation="2dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="#33FFFFFF">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -20,8 +22,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Data i zmiany"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textColor="?attr/colorOnSurface" />
+            android:textSize="16sp"
+            android:textColor="#FFFFFF" />
 
         <RadioGroup
             android:id="@+id/rg_category"
@@ -35,14 +37,20 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="BAR" />
+                android:text="BAR"
+                android:textSize="14sp"
+                android:textColor="#FFFFFF"
+                android:buttonTint="#FF6600" />
 
             <RadioButton
                 android:id="@+id/rb_ow"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="OW" />
+                android:text="OW"
+                android:textSize="14sp"
+                android:textColor="#FFFFFF"
+                android:buttonTint="#FF6600" />
         </RadioGroup>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>
