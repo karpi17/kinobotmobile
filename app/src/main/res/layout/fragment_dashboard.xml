@@ -15,7 +15,6 @@
         android:gravity="center_horizontal"
         android:padding="24dp">
 
-        <!-- Tytuł -->
         <TextView
             android:id="@+id/tv_dashboard_title"
             android:layout_width="wrap_content"
@@ -24,7 +23,7 @@
             android:textSize="28sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
-            
+
         <TextView
             android:id="@+id/tv_sync_status"
             android:layout_width="wrap_content"
@@ -57,92 +56,27 @@
             app:icon="@android:drawable/ic_dialog_alert"
             app:iconTint="?attr/colorOnPrimary" />
 
-        <!-- ═══ Karta "Następna Zmiana" (Hero Widget) ═══ -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/card_next_shift"
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/vp_dashboard_carousel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tab_dashboard_dots"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="24dp"
-            style="?attr/materialCardViewElevatedStyle"
-            app:cardCornerRadius="16dp"
-            app:cardBackgroundColor="#1E1E1E">
+            android:background="@android:color/transparent"
+            app:tabGravity="center"
+            app:tabIndicatorHeight="0dp" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="24dp"
-                android:gravity="center">
-
-                <TextView
-                    android:id="@+id/tv_next_shift_label"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Następna zmiana"
-                    android:textAllCaps="true"
-                    android:letterSpacing="0.1"
-                    android:textSize="12sp"
-                    app:cardBackgroundColor="#1E1E1E"
-                    android:layout_marginBottom="8dp" />
-
-                <!-- Widoczny, gdy JEST wpis -->
-                <LinearLayout
-                    android:id="@+id/layout_next_shift_data"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:id="@+id/tv_next_shift_date"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceHeadline5"
-                        android:textStyle="bold"
-                        app:cardBackgroundColor="#1E1E1E" />
-
-                    <TextView
-                        android:id="@+id/tv_next_shift_hours"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textAppearance="?attr/textAppearanceSubtitle1"
-                        app:cardBackgroundColor="#1E1E1E"
-                        android:layout_marginTop="4dp" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chip_next_shift_desc"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:clickable="false"
-                        android:textStyle="bold"
-                        android:textColor="?attr/colorOnPrimary"
-                        app:chipBackgroundColor="?attr/colorPrimary"
-                        app:chipStrokeWidth="0dp"
-                        android:layout_marginTop="8dp" />
-                </LinearLayout>
-
-                <!-- Widoczny, gdy BRAK wpisu -->
-                <TextView
-                    android:id="@+id/tv_no_next_shift"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Brak zaplanowanych zmian"
-                    android:textSize="16sp"
-                    android:textStyle="italic"
-                    app:cardBackgroundColor="#1E1E1E"
-                    android:alpha="0.7"
-                    android:visibility="visible" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- ═══ Pasek Postępu Miesiąca ═══ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:layout_marginBottom="24dp">
-            
+
             <TextView
                 android:id="@+id/tv_progress_text"
                 android:layout_width="match_parent"
@@ -162,15 +96,13 @@
                 android:max="100"
                 android:progress="0" />
         </LinearLayout>
-        
-        <!-- ═══ Przycisk logowania Google (Wyświetlany tylko, gdy brak autoryzacji) ═══ -->
+
         <com.google.android.gms.common.SignInButton
             android:id="@+id/btn_google_sign_in"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp" />
-            
-        <!-- ═══ Sekcja nazwiska użytkownika (Wyświetlana tylko jeśli brak nazwiska) ═══ -->
+
         <LinearLayout
             android:id="@+id/layout_name_input"
             android:layout_width="match_parent"
@@ -212,18 +144,17 @@
             android:visibility="gone"
             android:layout_marginBottom="16dp" />
 
-        <!-- ═══ Przycisk Szczegóły Wypłaty ═══ -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_payroll_details"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Szczegóły Wypłaty"
+            app:backgroundTint="#FF6600"
+            android:textColor="#FFFFFF"
             app:icon="@android:drawable/ic_secure"
             app:iconGravity="textStart"
-            android:layout_marginBottom="16dp"
-            style="@style/Widget.Material3.Button.TonalButton" />
+            android:layout_marginBottom="16dp" />
 
-        <!-- ═══ Siatka Szybkich Akcji (Quick Actions) ═══ -->
         <GridLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -233,61 +164,81 @@
             android:columnOrderPreserved="false"
             android:useDefaultMargins="true">
 
-            <!-- Przycisk 1: Synchronizacja -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_sync_schedule"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:minHeight="80dp"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
                 android:text="Synchronizuj"
                 android:textAllCaps="false"
+                android:gravity="center"
+                android:maxLines="2"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="10sp"
+                app:autoSizeMaxTextSize="14sp"
                 app:icon="@android:drawable/stat_notify_sync"
                 app:iconGravity="textStart"
                 app:cornerRadius="12dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"                />
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
-            <!-- Przycisk 2: Ustaw Cel Godzinowy -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_set_goal"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:minHeight="80dp"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
                 android:text="Cel Godzinowy"
                 android:textAllCaps="false"
+                android:gravity="center"
+                android:maxLines="2"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="10sp"
+                app:autoSizeMaxTextSize="14sp"
                 app:icon="@android:drawable/ic_menu_myplaces"
                 app:iconGravity="textStart"
                 app:cornerRadius="12dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"                />
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
-            <!-- Przycisk 3: Czas Powiadomienia -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_set_notification"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:minHeight="80dp"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
                 android:text="Czas Powiadomienia"
                 android:textAllCaps="false"
+                android:gravity="center"
+                android:maxLines="2"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="10sp"
+                app:autoSizeMaxTextSize="14sp"
                 app:icon="@android:drawable/ic_popup_reminder"
                 app:iconGravity="textStart"
                 app:cornerRadius="12dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"                />
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
-            <!-- Przycisk 4: Zmień Nazwisko -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_change_name_action"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:minHeight="80dp"
                 android:layout_columnWeight="1"
                 android:layout_margin="4dp"
                 android:text="Zmień Nazwisko"
                 android:textAllCaps="false"
+                android:gravity="center"
+                android:maxLines="2"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="10sp"
+                app:autoSizeMaxTextSize="14sp"
                 app:icon="@android:drawable/ic_menu_edit"
                 app:iconGravity="textStart"
                 app:cornerRadius="12dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"                />
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
         </GridLayout>
 

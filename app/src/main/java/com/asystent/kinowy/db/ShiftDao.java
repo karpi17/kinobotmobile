@@ -36,4 +36,22 @@ public interface ShiftDao {
 
     @Query("DELETE FROM shifts")
     void deleteAll();
+
+    /**
+     * Pobiera wszystkie zmiany synchronicznie (bez LiveData).
+     * Używane przez AppWidgetProvider, który działa poza kontekstem Activity.
+     */
+    @Query("SELECT * FROM shifts ORDER BY date ASC, start_time ASC")
+    List<Shift> getAllShiftsSync();
+
+    /**
+     * Pobiera surowe wartości kolumny closing_crew z ostatnich 14 dni.
+     * Każdy wiersz może zawierać wiele imion po przecinku (np. "Kacper W., Ola G.").
+     * Wywoływać wyłącznie na wątku w tle (synchroniczne).
+     */
+    @Query("SELECT closing_crew FROM shifts " +
+           "WHERE date >= date('now', '-14 days') " +
+           "AND closing_crew IS NOT NULL " +
+           "AND closing_crew != ''")
+    List<String> getRecentClosingCrews();
 }

@@ -44,12 +44,17 @@ public class ShiftAdapter extends RecyclerView.Adapter<ShiftAdapter.ShiftViewHol
         final TextView tvDate;
         final TextView tvHours;
         final TextView tvDescription;
+        final TextView tvMoonIcon;
+        final TextView tvClosingCrew;
 
         ShiftViewHolder(@NonNull View itemView) {
             super(itemView);
             tvDate = itemView.findViewById(R.id.tv_shift_date);
             tvHours = itemView.findViewById(R.id.tv_shift_hours);
-            tvDescription = itemView.findViewById(R.id.chip_shift_description);        }
+            tvDescription = itemView.findViewById(R.id.chip_shift_description);
+            tvMoonIcon = itemView.findViewById(R.id.tv_moon_icon);
+            tvClosingCrew = itemView.findViewById(R.id.tv_closing_crew);
+        }
     }
 
     // ─── Konstruktor ─────────────────────────────────────────────────────
@@ -103,6 +108,23 @@ public class ShiftAdapter extends RecyclerView.Adapter<ShiftAdapter.ShiftViewHol
         } else {
             holder.tvDescription.setVisibility(View.GONE);
             holder.itemView.setAlpha(1.0f);
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // 🌙 Algorytm Zamków — ikona + ekipa zamykająca
+        // ═══════════════════════════════════════════════════════════
+        if (shift.isClosingShift()) {
+            holder.tvMoonIcon.setVisibility(View.VISIBLE);
+        } else {
+            holder.tvMoonIcon.setVisibility(View.GONE);
+        }
+
+        String crew = shift.getClosingCrew();
+        if (crew != null && !crew.isEmpty()) {
+            holder.tvClosingCrew.setText("🧑‍🤝‍🧑 Ekipa: " + crew);
+            holder.tvClosingCrew.setVisibility(View.VISIBLE);
+        } else {
+            holder.tvClosingCrew.setVisibility(View.GONE);
         }
 
         // Kuloodporne Kliknięcie → edycja

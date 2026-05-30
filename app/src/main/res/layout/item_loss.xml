@@ -12,7 +12,7 @@
         android:id="@+id/tv_loss_amount"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textSize="15sp"
+        android:textSize="16sp"
         android:textStyle="bold"
         android:textColor="?attr/colorError" />
 
@@ -22,8 +22,8 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textSize="13sp"
-        android:textColor="?android:attr/textColorSecondary"
+        android:textSize="14sp"
+        android:textColor="#AAAAAA"
         android:layout_marginStart="8dp"
         android:ellipsize="end"
         android:maxLines="1" />
@@ -33,7 +33,7 @@
         android:id="@+id/tv_loss_date"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textSize="12sp"
-        android:textColor="?android:attr/textColorSecondary" />
+        android:textSize="14sp"
+        android:textColor="#AAAAAA" />
 
 </LinearLayout>

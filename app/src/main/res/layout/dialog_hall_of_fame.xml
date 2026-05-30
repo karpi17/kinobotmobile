@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="24dp"
+    android:background="#000000">
+
+    <ImageView
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:src="@android:drawable/btn_star_big_on"
+        android:contentDescription="Gwiazda"
+        android:tint="#FFD700"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Honorowy Członek Załogi"
+        android:textColor="#FFD700"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/tv_hall_of_fame_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Roksana Prystupa"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/tv_hall_of_fame_dedication"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Najlepsze zmiany ever!"
+        android:textColor="#CCCCCC"
+        android:textSize="16sp"
+        android:gravity="center" />
+
+</LinearLayout>

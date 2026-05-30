@@ -1,5 +1,6 @@
 package com.asystent.kinowy.models;
 
+import androidx.annotation.Nullable;
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;
 import androidx.room.Ignore;
@@ -37,7 +38,15 @@ public class Shift {
     @ColumnInfo(name = "category", defaultValue = "UNKNOWN")
     private String category;
 
-    // --- Konstruktor ---
+    @ColumnInfo(name = "is_closing_shift", defaultValue = "0")
+    private boolean isClosingShift;
+
+    @Nullable
+    @ColumnInfo(name = "closing_crew")
+    private String closingCrew; // "Ania, Tomek, Michał"
+
+    // --- Konstruktory ---
+
     @Ignore
     public Shift(String date, String startTime, String endTime, String description, boolean confirmed) {
         this(date, startTime, endTime, description, confirmed, false, "UNKNOWN");
@@ -56,69 +65,43 @@ public class Shift {
         this.confirmed = confirmed;
         this.isReplacement = isReplacement;
         this.category = category != null ? category : "UNKNOWN";
+        this.isClosingShift = false;
+        this.closingCrew = null;
     }
 
     // --- Gettery i Settery ---
 
-    public int getId() {
-        return id;
-    }
+    public int getId() { return id; }
+    public void setId(int id) { this.id = id; }
 
-    public void setId(int id) {
-        this.id = id;
-    }
+    public String getDate() { return date; }
+    public void setDate(String date) { this.date = date; }
 
-    public String getDate() {
-        return date;
-    }
+    public String getStartTime() { return startTime; }
+    public void setStartTime(String startTime) { this.startTime = startTime; }
 
-    public void setDate(String date) {
-        this.date = date;
-    }
+    public String getEndTime() { return endTime; }
+    public void setEndTime(String endTime) { this.endTime = endTime; }
 
-    public String getStartTime() {
-        return startTime;
-    }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
 
-    public void setStartTime(String startTime) {
-        this.startTime = startTime;
-    }
+    public boolean isConfirmed() { return confirmed; }
+    public void setConfirmed(boolean confirmed) { this.confirmed = confirmed; }
 
-    public String getEndTime() {
-        return endTime;
-    }
-
-    public void setEndTime(String endTime) {
-        this.endTime = endTime;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public boolean isConfirmed() {
-        return confirmed;
-    }
-
-    public void setConfirmed(boolean confirmed) {
-        this.confirmed = confirmed;
-    }
-
-    public boolean isReplacement() {
-        return isReplacement;
-    }
-
-    public void setReplacement(boolean replacement) {
-        isReplacement = replacement;
-    }
+    public boolean isReplacement() { return isReplacement; }
+    public void setReplacement(boolean replacement) { isReplacement = replacement; }
 
     public boolean isManual() { return isManual; }
     public void setManual(boolean manual) { isManual = manual; }
 
     public String getCategory() { return category; }
     public void setCategory(String category) { this.category = category; }
+
+    public boolean isClosingShift() { return isClosingShift; }
+    public void setClosingShift(boolean closingShift) { isClosingShift = closingShift; }
+
+    @Nullable
+    public String getClosingCrew() { return closingCrew; }
+    public void setClosingCrew(@Nullable String closingCrew) { this.closingCrew = closingCrew; }
 }

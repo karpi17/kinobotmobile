@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <!-- Ikona alarmu -->
+    <ImageView
+        android:id="@+id/alarm_icon"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
+        android:layout_marginBottom="24dp"
+        android:contentDescription="@string/alarm_icon_desc"
+        android:src="@drawable/ic_alarm_cinema"
+        android:scaleType="fitCenter" />
+
+    <!-- Nagłówek -->
+    <TextView
+        android:id="@+id/tv_alarm_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:text="@string/alarm_title_wakeup"
+        android:textColor="#FF6600"
+        android:textSize="32sp"
+        android:textStyle="bold" />
+
+    <!-- Informacja o zmianie -->
+    <TextView
+        android:id="@+id/tv_alarm_shift_info"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:fontFamily="sans-serif-light"
+        android:gravity="center"
+        android:text="@string/alarm_shift_placeholder"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp" />
+
+    <!-- Data zmiany -->
+    <TextView
+        android:id="@+id/tv_alarm_shift_date"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="48dp"
+        android:fontFamily="sans-serif"
+        android:gravity="center"
+        android:textColor="#AAAAAA"
+        android:textSize="18sp" />
+
+    <!-- Pulsujący separator -->
+    <View
+        android:id="@+id/pulse_divider"
+        android:layout_width="200dp"
+        android:layout_height="3dp"
+        android:layout_marginBottom="48dp"
+        android:background="#FF6600" />
+
+    <!-- Przycisk WSTAŁEM (główny) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_stop_alarm"
+        android:layout_width="280dp"
+        android:layout_height="72dp"
+        android:layout_marginBottom="16dp"
+        android:backgroundTint="#FF6600"
+        android:fontFamily="sans-serif-black"
+        android:text="@string/alarm_btn_stop"
+        android:textColor="#FFFFFF"
+        android:textSize="22sp" />
+
+    <!-- Przycisk DRZEMKA -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_snooze_alarm"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="280dp"
+        android:layout_height="60dp"
+        android:fontFamily="sans-serif-medium"
+        android:strokeColor="#FF6600"
+        android:strokeWidth="2"
+        android:text="@string/alarm_btn_snooze"
+        android:textColor="#FF6600"
+        android:textSize="18sp" />
+
+</LinearLayout>

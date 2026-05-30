@@ -2,6 +2,7 @@ package com.asystent.kinowy.network;
 
 import android.util.Log;
 
+import com.asystent.kinowy.models.GlobalShift;
 import com.asystent.kinowy.models.Shift;
 
 import org.apache.poi.ss.usermodel.Cell;
@@ -58,6 +59,10 @@ public class ExcelParsingService {
     /** Liczba dni w grafiku tygodniowym */
     private static final int DAYS_COUNT = 7;
 
+    /** Przedział godzin uznawanych za "zamek" (nocna zmiana) */
+    private static final LocalTime CLOSING_WINDOW_START = LocalTime.of(0, 0);
+    private static final LocalTime CLOSING_WINDOW_END   = LocalTime.of(5, 0);
+
     /** Skróty nazw zmian (odpowiednik SKROTY_NAZW z Pythona) */
     private static final Map<String, String> SKROTY_NAZW = new HashMap<>();
     static {
@@ -96,7 +101,8 @@ public class ExcelParsingService {
     /**
      * Parsuje plik .xlsx i zwraca zmiany dla podanego pracownika.
      * <p>
-     * Odpowiednik Pythonowego {@code parse_schedule(filepath)} + filtrowanie po nazwisku.
+     * Po wyodrębnieniu zmian użytkownika, uruchamia algorytm zamków:
+     * oznacza nocne zmiany (isClosingShift) i wyciąga ekipę zamykającą (closingCrew).
      *
      * @param excelFileStream strumień z plikiem .xlsx
      * @param targetUserName  imię i nazwisko pracownika (case-insensitive, z/bez kropki)
@@ -108,14 +114,36 @@ public class ExcelParsingService {
 
         // Szukamy pracownika (case-insensitive, ignorujemy kropki)
         String targetNorm = normalize(targetUserName);
-        for (Map.Entry<String, List<Shift>> entry : result.scheduleByName.entrySet()) {
-            if (normalize(entry.getKey()).equals(targetNorm)) {
-                return entry.getValue();
+        String matchedName = null;
+        for (String name : result.scheduleByName.keySet()) {
+            if (normalize(name).equals(targetNorm)) {
+                matchedName = name;
+                break;
             }
         }
 
-        Log.w(TAG, "Nie znaleziono pracownika: " + targetUserName);
-        return new ArrayList<>();
+        if (matchedName == null) {
+            Log.w(TAG, "Nie znaleziono pracownika: " + targetUserName);
+            return new ArrayList<>();
+        }
+
+        List<Shift> userShifts = result.scheduleByName.get(matchedName);
+        if (userShifts == null) return new ArrayList<>();
+
+        // ═════════════════════════════════════════════════════════════
+        // ALGORYTM ZAMKÓW — oznaczanie nocnych zmian i ekipy zamykającej
+        // ═════════════════════════════════════════════════════════════
+        for (Shift shift : userShifts) {
+            if (isClosingTime(shift.getEndTime())) {
+                shift.setClosingShift(true);
+                String crew = findClosingCrew(result, matchedName, shift);
+                if (crew != null && !crew.isEmpty()) {
+                    shift.setClosingCrew(crew);
+                }
+            }
+        }
+
+        return userShifts;
     }
 
     /**
@@ -181,6 +209,75 @@ public class ExcelParsingService {
         }
 
         return new ParseResult(scheduleByName, allDates, foundNames);
+    }
+
+    // ─── Algorytm Zamków ────────────────────────────────────────────────
+
+    /**
+     * Sprawdza, czy godzina zakończenia zmiany wpada w "okno zamkowe" (00:00–05:00).
+     *
+     * @param endTime godzina zakończenia w formacie "HH:mm"
+     * @return true jeśli to zmiana zamykająca (nocna)
+     */
+    private boolean isClosingTime(String endTime) {
+        if (endTime == null || endTime.isEmpty()) return false;
+        try {
+            LocalTime end = LocalTime.parse(endTime, TIME_FMT);
+            // 00:00 to midnight (LocalTime.MIDNIGHT), 05:00 to granica
+            // Warunek: end >= 00:00 AND end <= 05:00
+            // LocalTime.MIDNIGHT (00:00) jest mniejsze niż 05:00, więc:
+            return !end.isAfter(CLOSING_WINDOW_END); // 00:00–05:00 włącznie
+        } catch (Exception e) {
+            Log.w(TAG, "Nie można sparsować godziny zamka: " + endTime, e);
+            return false;
+        }
+    }
+
+    /**
+     * Szuka ekipy zamykającej — innych pracowników, których zmiana tego samego
+     * dnia RÓWNIEŻ kończy się w oknie 00:00–05:00.
+     *
+     * @param result     pełny wynik parsowania (wszyscy pracownicy)
+     * @param targetName imię użytkownika (do pominięcia)
+     * @param userShift  zmiana użytkownika oznaczona jako zamek
+     * @return ciąg imion rozdzielonych przecinkami, lub null
+     */
+    private String findClosingCrew(ParseResult result, String targetName, Shift userShift) {
+        List<String> crewNames = new ArrayList<>();
+        String shiftDate = userShift.getDate();
+
+        for (Map.Entry<String, List<Shift>> entry : result.getScheduleByName().entrySet()) {
+            String otherName = entry.getKey();
+
+            // Pomiń samego użytkownika
+            if (otherName.equals(targetName)) continue;
+
+            // Szukaj zmiany tego pracownika w tym samym dniu
+            for (Shift otherShift : entry.getValue()) {
+                if (shiftDate.equals(otherShift.getDate())) {
+                    // Czy ta osoba też kończy w oknie zamkowym?
+                    if (isClosingTime(otherShift.getEndTime())) {
+                        // Wyciągnij samo imię (bez nazwiska) do czytelniejszego wyświetlenia
+                        String shortName = extractShortName(otherName);
+                        crewNames.add(shortName);
+                    }
+                    break; // Jedna zmiana na dzień na osobę
+                }
+            }
+        }
+
+        if (crewNames.isEmpty()) return null;
+        return String.join(", ", crewNames);
+    }
+
+    /**
+     * Zwraca skróconą formę imienia z grafiku.
+     * Format kinowy: "Kacper W.", "Aleksandra G." — zwracamy cały string,
+     * bo jest już wystarczająco krótki i jednoznaczny.
+     */
+    private String extractShortName(String fullName) {
+        if (fullName == null || fullName.isEmpty()) return fullName;
+        return fullName.trim();
     }
 
     // ─── Parsowanie nagłówków dat ────────────────────────────────────────
@@ -414,5 +511,97 @@ public class ExcelParsingService {
      */
     public static Map<String, String> getSkrotyNazw() {
         return new HashMap<>(SKROTY_NAZW);
+    }
+
+    // ─── Globalny Grafik ─────────────────────────────────────────────────
+
+    /**
+     * Generuje płaską listę {@link GlobalShift} z pełnego wyniku parsowania.
+     * <p>
+     * Każda poprawnie odczytana zmiana każdego pracownika staje się obiektem
+     * GlobalShift. Lista jest gotowa do hurtowego zapisu przez
+     * {@code GlobalShiftDao.insertAll()} z {@code INSERT OR IGNORE}.
+     *
+     * @param result wynik z {@link #parseFullSchedule(InputStream)}
+     * @return lista GlobalShift (może być pusta, nigdy null)
+     */
+    public static List<GlobalShift> generateGlobalShifts(ParseResult result) {
+        List<GlobalShift> globalShifts = new ArrayList<>();
+        if (result == null || result.getScheduleByName() == null) return globalShifts;
+
+        for (Map.Entry<String, List<Shift>> entry : result.getScheduleByName().entrySet()) {
+            String rawName = entry.getKey();
+            String cleanName = cleanEmployeeName(rawName);
+            if (cleanName == null || cleanName.isEmpty()) continue;
+
+            for (Shift shift : entry.getValue()) {
+                // Pomijamy zmiany bez daty lub bez godzin
+                if (shift.getDate() == null || shift.getDate().isEmpty()) continue;
+                if (shift.getStartTime() == null || shift.getStartTime().isEmpty()) continue;
+
+                GlobalShift gs = new GlobalShift(
+                    cleanName,
+                    shift.getDate(),
+                    shift.getStartTime(),
+                    shift.getEndTime(),
+                    shift.getCategory()
+                );
+                globalShifts.add(gs);
+            }
+        }
+
+        return globalShifts;
+    }
+
+    // ─── Słownik pracowników ───────────────────────────────────────────
+
+    /**
+     * Czyści imię pracownika pobrane z grafiku Excel.
+     * <p>
+     * Wykonuje 3 operacje:
+     * <ol>
+     *   <li>Usuwa białe znaki z początku i końca (trim)</li>
+     *   <li>Redukuje podwójne spacje w środku do pojedynczych</li>
+     *   <li>Usuwa kropkę z końca stringa, jeśli istnieje</li>
+     * </ol>
+     * Zwraca pełne imię i nazwisko dokładnie tak, jak jest w Excelu
+     * (bez ucinania, bez inicjałów).
+     *
+     * @param fullName surowa nazwa z kolumny grafikowej
+     * @return oczyszczona nazwa lub oryginał jeśli null/pusty
+     */
+    public static String cleanEmployeeName(String fullName) {
+        if (fullName == null || fullName.trim().isEmpty()) return fullName;
+
+        // 1. Trim + redukcja podwójnych spacji
+        String cleaned = fullName.trim().replaceAll("\\s+", " ");
+
+        // 2. Usuń kropkę z końca (jeśli jest)
+        if (cleaned.endsWith(".")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 1).trim();
+        }
+
+        return cleaned;
+    }
+
+    /**
+     * Wyodrębnia i czyści imiona wszystkich pracowników z wyniku parsowania.
+     * Do użycia przy zasilaniu słownika {@code active_employees}.
+     *
+     * @param result wynik z {@link #parseFullSchedule(InputStream)}
+     * @return lista unikalnych, oczyszczonych imion (np. ["Wiśniewski Kacper", "Kowalska Zuzanna"])
+     */
+    public static List<String> getFormattedEmployeeNames(ParseResult result) {
+        List<String> formatted = new ArrayList<>();
+        if (result == null || result.getFoundNames() == null) return formatted;
+
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (String rawName : result.getFoundNames()) {
+            String name = cleanEmployeeName(rawName);
+            if (name != null && !name.isEmpty() && seen.add(name)) {
+                formatted.add(name);
+            }
+        }
+        return formatted;
     }
 }

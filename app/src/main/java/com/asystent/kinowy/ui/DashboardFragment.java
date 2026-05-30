@@ -253,8 +253,10 @@ public class DashboardFragment extends Fragment {
             }
             double hours = payroll != null ? payroll.getTotalHours() : 0.0;
             double actualRate = (rate != null) ? rate : 0.0;
+            double calculatedSalary = Math.max(0, hours * actualRate - totalLosses);
+            String targetMonth = viewModel.getCurrentMonthPrefix(); // e.g., "2026-03"
             
-            PayrollBottomSheet bottomSheet = new PayrollBottomSheet(hours, actualRate, totalLosses);
+            PayrollBottomSheet bottomSheet = new PayrollBottomSheet(targetMonth, hours, calculatedSalary);
             bottomSheet.show(getParentFragmentManager(), "PayrollBottomSheet");
         });
 
@@ -331,6 +333,10 @@ public class DashboardFragment extends Fragment {
             carouselAdapter.updateNextShift(shift);
         });
 
+        viewModel.getNextShiftCoworkers().observe(getViewLifecycleOwner(), coworkers -> {
+            carouselAdapter.updateCoworkers(coworkers);
+        });
+
         viewModel.getMonthlyHoursGoal().observe(getViewLifecycleOwner(), goal -> updateProgressUI());
         viewModel.getMonthlyPayroll().observe(getViewLifecycleOwner(), payroll -> updateProgressUI());
     }
@@ -344,13 +350,38 @@ public class DashboardFragment extends Fragment {
         
         int progress = (int) ((hours / goal) * 100);
         progressMonthlyHours.setMax(100);
-        // Smooth transition could be added, but setProgress directly works too
         progressMonthlyHours.setProgress(progress > 100 ? 100 : progress);
 
         String text = String.format(Locale.getDefault(), "Przepracowano: %.1fh / Cel: %dh (%d%%)", hours, goal, progress);
         tvProgressText.setText(text);
         
-        carouselAdapter.updateAnalytics(hours, goal);
+        // Calculate BAR vs OW hours for the donut chart
+        double barHours = 0;
+        double owHours = 0;
+        java.util.List<com.asystent.kinowy.models.Shift> shifts = viewModel.getAllShifts().getValue();
+        String monthPrefix = viewModel.getCurrentMonthPrefix();
+        if (shifts != null) {
+            for (com.asystent.kinowy.models.Shift s : shifts) {
+                if (s.getDate() == null || !s.getDate().startsWith(monthPrefix) || s.isReplacement()) continue;
+                double h = 0;
+                String startStr = s.getStartTime();
+                String endStr = s.getEndTime();
+                if (startStr != null && !startStr.isEmpty() && endStr != null && !endStr.isEmpty()) {
+                    try {
+                        java.time.LocalTime t1 = java.time.LocalTime.parse(startStr, java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+                        java.time.LocalTime t2 = java.time.LocalTime.parse(endStr, java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+                        h = com.asystent.kinowy.network.ExcelParsingService.calculateHours(t1, t2);
+                    } catch (Exception ignored) {}
+                }
+                String cat = s.getCategory();
+                if (cat != null && cat.contains("BAR")) {
+                    barHours += h;
+                } else if (cat != null && (cat.contains("OW") || cat.contains("SP"))) {
+                    owHours += h;
+                }
+            }
+        }
+        carouselAdapter.updateAnalytics(barHours, owHours);
     }
 
     // ─── Google Sign-In ──────────────────────────────────────────────────

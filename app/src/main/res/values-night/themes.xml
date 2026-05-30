@@ -3,7 +3,6 @@
 
     <!-- Motyw aplikacji — tryb nocny (dark) -->
     <style name="Theme.AsystentKinowy" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Primary -->
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryVariant">@color/colorPrimary</item>
         <item name="colorOnPrimary">@color/colorOnPrimary</item>
