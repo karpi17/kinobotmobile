@@ -21,3 +21,7 @@ out/
 *.tmp
 bot.py
 standard.txt
+kinobot_keystore
+app/release/
+*.apk
+*.aab
