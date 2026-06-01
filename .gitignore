@@ -25,3 +25,4 @@ kinobot_keystore
 app/release/
 *.apk
 *.aab
+walkthrough/

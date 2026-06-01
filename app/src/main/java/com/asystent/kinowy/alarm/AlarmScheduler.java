@@ -60,6 +60,16 @@ public class AlarmScheduler {
             return;
         }
 
+        // Walidacja: data i godzina nie mogą być null/puste
+        if (shift.getDate() == null || shift.getDate().trim().isEmpty()) {
+            Log.w(TAG, "⚠️ Shift #" + shift.getId() + " ma pustą datę — alarm nie zostanie ustawiony.");
+            return;
+        }
+        if (shift.getStartTime() == null || shift.getStartTime().trim().isEmpty()) {
+            Log.w(TAG, "⚠️ Shift #" + shift.getId() + " ma pusty startTime — alarm nie zostanie ustawiony.");
+            return;
+        }
+
         long triggerAtMillis = calculateTriggerTime(shift);
         if (triggerAtMillis <= System.currentTimeMillis()) {
             Log.w(TAG, "Alarm dla #" + shift.getId() + " jest w przeszłości — pomijam.");
@@ -119,9 +129,19 @@ public class AlarmScheduler {
      * {@code triggerTime = (date + startTime) - alarmOffsetMinutes}
      */
     private static long calculateTriggerTime(GlobalShift shift) {
+        // Dodatkowa warstwa ochrony przed pustymi stringami
+        String dateStr = shift.getDate();
+        String timeStr = shift.getStartTime();
+        if (dateStr == null || dateStr.trim().isEmpty()
+                || timeStr == null || timeStr.trim().isEmpty()) {
+            Log.w(TAG, "⚠️ calculateTriggerTime: pusty date='" + dateStr
+                    + "' lub startTime='" + timeStr + "' — zwracam 0.");
+            return 0;
+        }
+
         try {
-            LocalDate date = LocalDate.parse(shift.getDate(), DATE_FMT);
-            LocalTime time = LocalTime.parse(shift.getStartTime(), TIME_FMT);
+            LocalDate date = LocalDate.parse(dateStr.trim(), DATE_FMT);
+            LocalTime time = LocalTime.parse(timeStr.trim(), TIME_FMT);
             LocalDateTime shiftStart = LocalDateTime.of(date, time);
 
             // Odejmij offset
@@ -129,7 +149,8 @@ public class AlarmScheduler {
 
             return alarmTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         } catch (Exception e) {
-            Log.e(TAG, "Błąd parsowania daty/czasu zmiany: " + e.getMessage());
+            Log.e(TAG, "Błąd parsowania daty/czasu zmiany: date='" + dateStr
+                    + "', startTime='" + timeStr + "' — " + e.getMessage());
             return 0;
         }
     }
