@@ -143,4 +143,5 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton("Dzięki!", null)
                 .show();
     }
+
 }
