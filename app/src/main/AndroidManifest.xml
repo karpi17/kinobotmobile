@@ -29,7 +29,7 @@
         <!-- Full-Screen Alarm Ringing Activity -->
         <activity
             android:name=".alarm.AlarmRingingActivity"
-            android:exported="false"
+            android:exported="true"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
             android:excludeFromRecents="true"
@@ -38,11 +38,11 @@
 
         <receiver
             android:name=".notifications.ShiftNotificationReceiver"
-            android:exported="false" />
+            android:exported="true"/>
 
         <receiver
             android:name=".alarm.ShiftAlarmReceiver"
-            android:exported="false" />
+            android:exported="true" />
 
         <!-- Reschedule alarmów po restarcie telefonu -->
         <receiver

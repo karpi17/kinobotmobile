@@ -626,17 +626,37 @@ public class MainViewModel extends AndroidViewModel {
     public void toggleAlarmForShift(String date, String startTime,
                                     boolean hasAlarm, int offsetMinutes) {
         executor.execute(() -> {
-            // 1. Aktualizuj flagi w bazie
+            // 1. Aktualizuj flagi w bazie (zadziała tylko jeśli rekord istnieje)
             globalShiftDao.updateAlarmState(date, startTime, hasAlarm, offsetMinutes);
 
             // 2. Pobierz zaktualizowany obiekt (potrzebny do AlarmScheduler)
             GlobalShift gs = globalShiftDao.getShiftByDateAndStart(date, startTime);
+
+            // 3. UPSERT: jeśli brak rekordu (ręcznie dodana zmiana / niestandardowa),
+            //    utwórz nowy GlobalShift żeby alarm miał rekord w bazie
             if (gs == null) {
-                Log.w(TAG, "toggleAlarmForShift: brak GlobalShift dla " + date + " " + startTime);
-                return;
+                Log.w(TAG, "toggleAlarmForShift: brak GlobalShift dla " + date + " " + startTime
+                        + " — tworzę nowy rekord (upsert).");
+
+                String userName = targetUserName != null ? targetUserName : "Użytkownik";
+                GlobalShift newGs = new GlobalShift(userName, date, startTime, "", "UNKNOWN");
+                newGs.setHasAlarm(hasAlarm);
+                newGs.setAlarmOffsetMinutes(offsetMinutes);
+                newGs.setManuallyEdited(true); // chroniony przed parserem Excela
+
+                globalShiftDao.insertGlobalShift(newGs);
+
+                // Pobierz ponownie — potrzebujemy auto-generated ID
+                gs = globalShiftDao.getShiftByDateAndStart(date, startTime);
+
+                if (gs == null) {
+                    Log.e(TAG, "toggleAlarmForShift: nie udało się wstawić GlobalShift — alarm nie zostanie ustawiony.");
+                    return;
+                }
+                Log.i(TAG, "✅ Utworzono GlobalShift #" + gs.getId() + " dla alarmu: " + date + " " + startTime);
             }
 
-            // 3. Zaplanuj lub anuluj alarm
+            // 4. Zaplanuj lub anuluj alarm
             if (hasAlarm) {
                 com.asystent.kinowy.alarm.AlarmScheduler.scheduleOneOffAlarm(getApplication(), gs);
                 Log.i(TAG, "🔔 Alarm WŁĄCZONY: " + date + " " + startTime + " (-" + offsetMinutes + "min)");
