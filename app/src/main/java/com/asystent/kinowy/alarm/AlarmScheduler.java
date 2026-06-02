@@ -193,13 +193,19 @@ public class AlarmScheduler {
      */
     public static void scheduleSnoozeAlarm(Context context, String shiftStart,
                                            String shiftDate, String shiftCategory) {
-        if (context == null) return;
+        Log.i(TAG, "💤 scheduleSnoozeAlarm() ENTERED | start=" + shiftStart
+                + " | date=" + shiftDate + " | category=" + shiftCategory);
 
-        long triggerAtMillis = System.currentTimeMillis() + (10 * 60 * 1000); // +10 minut
+        if (context == null) {
+            Log.e(TAG, "💤 ABORT: context == null!");
+            return;
+        }
+
+        long triggerAtMillis = System.currentTimeMillis() + (1 * 60 * 1000); // +10 minut
 
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) {
-            Log.e(TAG, "AlarmManager niedostępny — nie można ustawić drzemki!");
+            Log.e(TAG, "💤 ABORT: AlarmManager niedostępny — nie można ustawić drzemki!");
             return;
         }
 
@@ -219,15 +225,21 @@ public class AlarmScheduler {
 
         // Android 12+ wymaga sprawdzenia canScheduleExactAlarms()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!alarmManager.canScheduleExactAlarms()) {
-                Log.w(TAG, "Brak uprawnień do exact alarms (Snooze). Używam inexact.");
+            boolean canExact = alarmManager.canScheduleExactAlarms();
+            Log.i(TAG, "💤 canScheduleExactAlarms() = " + canExact
+                    + " | SDK=" + Build.VERSION.SDK_INT);
+            if (!canExact) {
+                Log.w(TAG, "💤 FALLBACK: Używam inexact alarm (set) zamiast exact!");
                 alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+                Log.i(TAG, "💤 Drzemka INEXACT ustawiona: trigger=" + triggerAtMillis
+                        + " (za ~10 min od teraz=" + System.currentTimeMillis() + ")");
                 return;
             }
         }
 
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
 
-        Log.i(TAG, "💤 Drzemka ustawiona: +10 min | trigger: " + triggerAtMillis);
+        Log.i(TAG, "💤 Drzemka EXACT ustawiona: +10 min | trigger: " + triggerAtMillis
+                + " (teraz=" + System.currentTimeMillis() + ")");
     }
 }

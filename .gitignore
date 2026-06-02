@@ -2,6 +2,10 @@
 credentials.json
 *.jks
 *.keystore
+*.pem
+*.key
+*.p12
+*.der
 local.properties
 keystore.properties
 
@@ -9,7 +13,6 @@ keystore.properties
 .idea/
 .gradle/
 *.iml
-local.properties
 
 # Pliki generowane podczas kompilacji
 build/
@@ -27,3 +30,4 @@ app/release/
 *.apk
 *.aab
 walkthrough/
+.agents/

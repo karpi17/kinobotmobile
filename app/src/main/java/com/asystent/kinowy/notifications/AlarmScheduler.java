@@ -46,6 +46,13 @@ public class AlarmScheduler {
             String startStr = shift.getStartTime().trim();
             String endStr = shift.getEndTime().trim();
 
+            // Guard: puste stringi nie mogą być parsowane
+            if (startStr.isEmpty() || endStr.isEmpty()) {
+                Log.w(TAG, "Pusta godzina dla zmiany ID: " + shift.getId()
+                        + " (start='" + startStr + "', end='" + endStr + "') — pomijam.");
+                continue;
+            }
+
             // Kuloodporny fix na jednocyfrowe godziny wpadające z bazy/Excela (np. "0:00" -> "00:00")
             if (startStr.length() == 4 && startStr.charAt(1) == ':') startStr = "0" + startStr;
             if (endStr.length() == 4 && endStr.charAt(1) == ':') endStr = "0" + endStr;

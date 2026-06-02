@@ -234,15 +234,17 @@ public class AlarmRingingActivity extends AppCompatActivity {
      * Zatrzymuje alarm, ustawia nowy za 10 minut (snooze), zamyka aktywność.
      */
     private void snoozeAlarm() {
+        Log.i(TAG, "💤 snoozeAlarm() CALLED — użytkownik kliknął DRZEMKA");
         stopMediaAndVibration();
 
-        AlarmScheduler.scheduleSnoozeAlarm(
-                this,
-                getIntent().getStringExtra(EXTRA_SHIFT_START),
-                getIntent().getStringExtra(EXTRA_SHIFT_DATE),
-                getIntent().getStringExtra(EXTRA_SHIFT_CATEGORY)
-        );
+        String start = getIntent().getStringExtra(EXTRA_SHIFT_START);
+        String date = getIntent().getStringExtra(EXTRA_SHIFT_DATE);
+        String category = getIntent().getStringExtra(EXTRA_SHIFT_CATEGORY);
+        Log.i(TAG, "💤 Extras → start='" + start + "', date='" + date + "', category='" + category + "'");
 
+        AlarmScheduler.scheduleSnoozeAlarm(this, start, date, category);
+
+        Log.i(TAG, "💤 snoozeAlarm() → finish() — zamykam ekran alarmu");
         finish();
     }
 
