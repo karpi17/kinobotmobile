@@ -3,6 +3,7 @@ credentials.json
 *.jks
 *.keystore
 local.properties
+keystore.properties
 
 # Pliki konfiguracyjne IDE
 .idea/
