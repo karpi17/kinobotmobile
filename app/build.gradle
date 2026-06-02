@@ -2,13 +2,25 @@ plugins {
     id 'com.android.application'
 }
 
+// Signing credentials are loaded from keystore.properties (NOT committed to Git).
+// See keystore.properties.example for the required format.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     signingConfigs {
         release {
-            storeFile file('J:\\klucz\\klucz_kinobot')
-            storePassword 'Obraczka04.'
-            keyPassword 'Obraczka04.'
-            keyAlias 'klucz_kinoapp'
+            // Loaded from keystore.properties — NIGDY nie commituj haseł do repo!
+            if (keystorePropertiesFile.exists()) {
+                storeFile keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null
+                storePassword keystoreProperties["storePassword"]
+                keyPassword keystoreProperties["keyPassword"]
+                keyAlias keystoreProperties["keyAlias"]
+            }
         }
     }
     namespace 'com.asystent.kinowy'
