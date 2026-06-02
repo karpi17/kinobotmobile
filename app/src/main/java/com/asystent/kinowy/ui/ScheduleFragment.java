@@ -683,7 +683,8 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                                 offsetMinutes = Integer.parseInt(offsetText.replaceAll("[^0-9]", ""));
                             } catch (NumberFormatException ignored) { }
                         }
-                        viewModel.toggleAlarmForShift(date, start, alarmEnabled, offsetMinutes);
+                        viewModel.toggleAlarmForShift(date, start, end, cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase(),
+                                alarmEnabled, offsetMinutes);
                     }
                 })
                 .setNegativeButton("Anuluj", null);

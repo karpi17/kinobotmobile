@@ -620,12 +620,18 @@ public class MainViewModel extends AndroidViewModel {
      *
      * @param date         data zmiany (yyyy-MM-dd)
      * @param startTime    godzina startu (HH:mm)
+     * @param endTime      godzina końca (HH:mm) — wymagana dla upsert
+     * @param category     kategoria zmiany (BAR/OW/UNKNOWN)
      * @param hasAlarm     true = włącz alarm, false = wyłącz
      * @param offsetMinutes wyprzedzenie w minutach (30, 60, 90, 120)
      */
     public void toggleAlarmForShift(String date, String startTime,
+                                    String endTime, String category,
                                     boolean hasAlarm, int offsetMinutes) {
         executor.execute(() -> {
+            // 0. Pobierz STARY stan — potrzebny do anulowania starego alarmu przy edycji
+            GlobalShift oldGs = globalShiftDao.getShiftByDateAndStart(date, startTime);
+
             // 1. Aktualizuj flagi w bazie (zadziała tylko jeśli rekord istnieje)
             globalShiftDao.updateAlarmState(date, startTime, hasAlarm, offsetMinutes);
 
@@ -638,8 +644,13 @@ public class MainViewModel extends AndroidViewModel {
                 Log.w(TAG, "toggleAlarmForShift: brak GlobalShift dla " + date + " " + startTime
                         + " — tworzę nowy rekord (upsert).");
 
+                // Walidacja: nie tworzymy rekordu z pustym endTime
+                String safeEndTime = (endTime != null && !endTime.trim().isEmpty())
+                        ? endTime.trim() : startTime; // fallback: endTime = startTime
+
                 String userName = targetUserName != null ? targetUserName : "Użytkownik";
-                GlobalShift newGs = new GlobalShift(userName, date, startTime, "", "UNKNOWN");
+                GlobalShift newGs = new GlobalShift(userName, date, startTime, safeEndTime,
+                        category != null ? category : "UNKNOWN");
                 newGs.setHasAlarm(hasAlarm);
                 newGs.setAlarmOffsetMinutes(offsetMinutes);
                 newGs.setManuallyEdited(true); // chroniony przed parserem Excela
@@ -656,7 +667,13 @@ public class MainViewModel extends AndroidViewModel {
                 Log.i(TAG, "✅ Utworzono GlobalShift #" + gs.getId() + " dla alarmu: " + date + " " + startTime);
             }
 
-            // 4. Zaplanuj lub anuluj alarm
+            // 4. Anuluj stary alarm (ważne przy edycji godziny — inaczej stary zostaje)
+            if (oldGs != null && oldGs.isHasAlarm()) {
+                com.asystent.kinowy.alarm.AlarmScheduler.cancelAlarm(getApplication(), oldGs);
+                Log.i(TAG, "🔕 Stary alarm anulowany przed re-schedule: " + date + " " + startTime);
+            }
+
+            // 5. Zaplanuj lub anuluj alarm
             if (hasAlarm) {
                 com.asystent.kinowy.alarm.AlarmScheduler.scheduleOneOffAlarm(getApplication(), gs);
                 Log.i(TAG, "🔔 Alarm WŁĄCZONY: " + date + " " + startTime + " (-" + offsetMinutes + "min)");
