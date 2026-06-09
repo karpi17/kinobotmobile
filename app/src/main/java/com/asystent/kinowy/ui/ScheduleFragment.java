@@ -400,6 +400,18 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                         return;
                     }
 
+                    // Walidacja formatu godzin — muszą być HH:mm albo puste
+                    if (!startTime.isEmpty() && !startTime.matches("\\d{2}:\\d{2}")) {
+                        android.widget.Toast.makeText(requireContext(),
+                                "Zły format godziny startu (np. 08:00)", android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (!endTime.isEmpty() && !endTime.matches("\\d{2}:\\d{2}")) {
+                        android.widget.Toast.makeText(requireContext(),
+                                "Zły format godziny końca (np. 22:00)", android.widget.Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
                     // Domyślne godziny jeśli puste
                     if (startTime.isEmpty()) startTime = myStart;
                     if (endTime.isEmpty()) endTime = myEnd;
@@ -413,12 +425,16 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                     newGs.setManuallyEdited(true); // KRYTYCZNE: ochrona przed parserem
 
                     // ═════ Async insert + refresh UI ═════
-                    viewModel.insertGlobalShift(newGs, () -> {
-                        // Callback na main thread — odśwież listę
+                    // insertGlobalShift zwraca rowId: -1 = duplikat (Room UNIQUE IGNORE)
+                    viewModel.insertGlobalShift(newGs, (rowId) -> {
+                        if (rowId == -1L) {
+                            android.widget.Toast.makeText(requireContext(),
+                                    name + " jest już na tej zmianie", android.widget.Toast.LENGTH_SHORT).show();
+                            return;
+                        }
                         refreshCoworkersSection(
                                 shiftDate, myStart, myEnd,
                                 layoutSection, rvCoworkers, cwAdapter);
-
                         android.widget.Toast.makeText(requireContext(),
                                 "Dodano: " + name, android.widget.Toast.LENGTH_SHORT).show();
                     });
@@ -655,17 +671,24 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                     boolean closing = isClosingTime(end);
 
                     if (isEdit) {
+                        String finalCat = cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase();
                         shift.setDate(date);
                         shift.setStartTime(start);
                         shift.setEndTime(end);
-                        shift.setCategory(cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase());
+                        shift.setCategory(finalCat);
                         shift.setReplacement(isRep);
                         shift.setManual(true);
                         shift.setClosingShift(closing);
                         shift.setClosingCrew(closing && !crew.isEmpty() ? crew : null);
+                        // Aktualizuj opis żeby chip był widoczny
+                        String updatedDesc = start.isEmpty() ? finalCat : finalCat + " (" + start + "-" + end + ")";
+                        shift.setDescription(updatedDesc);
                         viewModel.updateShift(shift);
                     } else {
-                        Shift newShift = new Shift(date, start, end, "", true, isRep, cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase());
+                        // Budujemy description tak samo jak parser Excela — chip będzie widoczny
+                        String finalCat = cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase();
+                        String desc = start.isEmpty() ? finalCat : finalCat + " (" + start + "-" + end + ")";
+                        Shift newShift = new Shift(date, start, end, desc, true, isRep, finalCat);
                         newShift.setManual(true);
                         newShift.setClosingShift(closing);
                         newShift.setClosingCrew(closing && !crew.isEmpty() ? crew : null);

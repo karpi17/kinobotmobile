@@ -572,16 +572,19 @@ public class MainViewModel extends AndroidViewModel {
      * Wywoływane na wątku w tle.
      *
      * @param gs nowy obiekt GlobalShift
-     * @param onComplete callback po udanym zapisie (wywoływany na main thread)
+     * @param onComplete callback po operacji (wywoływany na main thread), dostaje rowId lub -1 jeśli duplikat
      */
-    public void insertGlobalShift(GlobalShift gs, Runnable onComplete) {
+    public void insertGlobalShift(GlobalShift gs, java.util.function.Consumer<Long> onComplete) {
         executor.execute(() -> {
             gs.setManuallyEdited(true);
-            globalShiftDao.insertGlobalShift(gs);
-            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+            long rowId = globalShiftDao.insertGlobalShift(gs);
+            // Widget refresh tylko gdy faktycznie dodano (nie duplikat)
+            if (rowId != -1L) {
+                com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+            }
 
             if (onComplete != null) {
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(onComplete);
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> onComplete.accept(rowId));
             }
         });
     }

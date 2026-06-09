@@ -39,7 +39,7 @@ public interface GlobalShiftDao {
      * Duplikaty (po unikalnym indeksie) są ignorowane.
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    void insertGlobalShift(GlobalShift shift);
+    long insertGlobalShift(GlobalShift shift);
 
     /**
      * Aktualizuje istniejącą zmianę globalną (po ID).
