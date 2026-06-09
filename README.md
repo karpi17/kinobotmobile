@@ -1,87 +1,175 @@
-# KinoBot (Cinema Assistant) 🎬🍿
+# KinoBot 🎬🍿
 
-> **Cześć! / Hi! 👋**  
-> *Scroll down for the English version.*
+> **Cześć! / Hi! 👋** — *Scroll down for the English version.*
 
----
-
-## 🇵🇱 O projekcie (Dla Rekrutera)
-
-Nazywam się Kacper i zbudowałem KinoBota. 
-Jeśli przeglądasz ten kod, pewnie zastanawiasz się, po co kolejna aplikacja do grafiku. Odpowiedź jest prosta: grafiki w kinie to chaos. Zmiany wpadają mailem w Excelu, często na ostatnią chwilę, a praca nierzadko kończy się w środku nocy (tzw. "zamki"). Zamiast ręcznie przepisywać to do kalendarza i liczyć godziny, napisałem aplikację, która robi to za mnie.
-
-To **nie jest** zabawkowy projekt z tutoriala, który ładnie wygląda na GitHubie, a w rzeczywistości wywala się przy pierwszym błędzie. KinoBot to przetestowana w boju, natywna aplikacja na Androida, która od miesięcy jest moim głównym narzędziem codziennej pracy. Rozwiązuje realne problemy moje i moich współpracowników.
-
-### 🔥 Co tu zbudowałem (Główne Funkcje)
-
-*   **Automatyzacja Gmail & Excel:** Apka łączy się z Gmailem (OAuth 2.0), nasłuchuje na maile z grafikiem, po cichu pobiera załączniki `.xlsx` i parsuje je w tle (Apache POI). Magia dzieje się sama.
-*   **Architektura SSoT (Single Source of Truth):** Inteligentny mechanizm łączenia danych. Kiedy biorę za kogoś zastępstwo lub ręcznie zmieniam godziny, aplikacja oznacza te rekordy jako "nietykalne". Dzięki temu kolejny automatyczny import z Excela nie nadpisze moich ręcznych modyfikacji.
-*   **Kuloodporny, pełnoekranowy budzik:** System alarmów napisany od zera na `AlarmManager`.
-    *   Wie, czy zmiana jest w dzień, czy w nocy (obsługuje przejścia przez północ).
-    *   Dynamicznie anuluje i przebudowuje alarmy, gdy edytuję grafik.
-    *   Odpala pełnoekranowy widok (Full-Screen Intent) wybudzając urządzenie z trybu uśpienia.
-    *   Pamięta ustawienia po restarcie telefonu (`BOOT_COMPLETED`).
-    *   Wspiera drzemki i wibruje, żeby mnie dobudzić.
-*   **Z kim dzisiaj pracuję?:** Moduł przecinania przedziałów czasowych. Aplikacja w mgnieniu oka analizuje cały grafik kina i pokazuje mi na widżecie (lub w apce) listę osób, które będą ze mną na zmianie.
-*   **Kalkulator Finansów:** Śledzi mój cel finansowy, liczy przepracowane godziny i pokazuje (na wykresach), ile brakuje mi do celu.
-
-### 🛠️ Tech Stack
-*   **Język:** Java
-*   **Architektura:** MVVM (Model-View-ViewModel) z poprawnym zarządzaniem cyklem życia
-*   **Baza Danych:** Room (SQLite) - solidne relacje, niestandardowe migracje w kodzie
-*   **Sieć & Autoryzacja:** Retrofit, Gson, Google Play Services Auth (OAuth2), Gmail API
-*   **Android API:** AlarmManager, BroadcastReceivers, Full-Screen Intents, Services
-*   **UI/UX:** Material Design 3, Glassmorphism, ViewPager2, MPAndroidChart
-
-### 🗺️ Plany na przyszłość (Roadmapa)
-Projekt cały czas żyje. W planach mam:
-*   **Dyspo-Bot:** Moduł automatyzujący podawanie dyspozycyjności. Genereowanie odpowiedniego tekstu lub wstrzykiwanie JS do WebView, by auto-uzupełniać uczelniany/firmowy formularz (np. MS Forms).
-*   **Strażnik BHP:** Detekcja "patologii grafikowych". Aplikacja wyrzuci alert, gdy menedżer wpisze mi "zamknięcie", a na drugi dzień "otwarcie" (Clopen), łamiąc 11-godzinną przerwę na odpoczynek.
-*   **Public Release / White-label:** Uwolnienie parsera. Planuję oddzielić logikę czytania Excela za interfejsami, by móc podpinać inne rodzaje grafików (np. PDF, CSV) i wypuścić aplikację dla pracowników innych sieci i branż.
+![Platform](https://img.shields.io/badge/platform-Android-green?logo=android)
+![Language](https://img.shields.io/badge/language-Java-orange?logo=java)
+![Min SDK](https://img.shields.io/badge/minSdk-26-blue)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Status](https://img.shields.io/badge/status-Active%20Development-brightgreen)
 
 ---
 
-## 🇬🇧 About the Project (For Recruiters)
+## 🇵🇱 O projekcie
 
-Hi! I'm Kacper, the creator of KinoBot.
-If you're looking at this code, you might be asking yourself: "why build another calendar/scheduling app?". The answer is simple: cinema schedules are chaotic. Shifts arrive randomly as Excel attachments via email, are updated last-minute, and often end deep in the night. Instead of wasting time manually copying shifts to Google Calendar and tracking my salary in spreadsheets, I built a system to automate the pain away.
+Nazywam się Kacper i zbudowałem KinoBota.
 
-This is **not** a copy-paste tutorial app. It's a robust, battle-tested native Android application that actually solves real-world operational problems and has been my daily driver for months.
+Grafiki w kinie to chaos. Zmiany wpadają mailem w Excelu, często na ostatnią chwilę, a praca nierzadko kończy się w środku nocy (tzw. „zamki"). Zamiast ręcznie przepisywać to do kalendarza i liczyć godziny w arkuszu, napisałem aplikację, która robi to za mnie — i działa od miesięcy jako moje codzienne narzędzie pracy.
 
-### 🔥 Engineering Highlights & Core Features
+To **nie jest** projekt z tutoriala. Rozwiązuje realne, operacyjne problemy, z którymi zderzam się każdego tygodnia.
 
-*   **Seamless Email & Excel Pipeline:** Integrates deeply with the **Gmail API** via OAuth 2.0. A background service fetches new emails, extracts `.xlsx` attachments, and parses the entire cinema schedule using Apache POI.
-*   **Single Source of Truth (SSoT) Sync:** Cinema shifts often change (e.g., co-worker swaps). The app features a smart data-merge algorithm that protects manually edited or swapped shifts from being blindly overwritten by subsequent automated Excel syncs.
-*   **Bulletproof Alarm System:** A custom, exact-timing alarm system built on `AlarmManager`.
-    *   Handles night shifts crossing midnight gracefully.
-    *   Uses `BroadcastReceivers` and Full-Screen Intents to wake up the device and show a custom alarm screen over the lockguard.
-    *   Automatically cleans up and reschedules alarms when shift times are edited.
-    *   Survives device reboots and system memory trims.
-    *   Features a reliable snooze mechanism.
-*   **Crew Intersection Engine:** Want to know who you're working with? A custom algorithm calculates time-interval overlaps from the global schedule to instantly show you your co-workers for the day on the app's widget.
-*   **Financial Dashboard:** Tracks monthly hour quotas and salary goals with a dynamic glassmorphic UI and interactive charts.
+### 🔥 Główne funkcje
+
+*   **Automatyzacja Gmail & Excel** — apka łączy się z Gmailem (OAuth 2.0), nasłuchuje na maile z grafikiem, pobiera załączniki `.xlsx` i parsuje je w tle (Apache POI). Magia dzieje się sama.
+*   **Architektura SSoT (Single Source of Truth)** — inteligentny algorytm łączenia danych. Kiedy biorę za kogoś zastępstwo lub ręcznie zmieniam godziny, aplikacja oznacza te rekordy jako "chronione". Kolejny automatyczny import z Excela ich nie nadpisuje.
+*   **Pełnoekranowy budzik, testowany na urządzeniu** — system alarmów napisany od zera, przetestowany na Samsung S24 FE (Android 16 / One UI 8.5):
+    *   Full-Screen Intent wybudza telefon z ekranem zablokowanym.
+    *   Obsługuje zmiany nocne przechodzące przez północ.
+    *   Drzemka (snooze) z dokładnym timerem (exact alarm, +10 min).
+    *   Przeżywa restart telefonu (`BOOT_COMPLETED`).
+    *   Automatycznie anuluje i przebudowuje alarm po edycji godziny zmiany.
+*   **Z kim dzisiaj pracuję?** — algorytm przecinania przedziałów czasowych. Aplikacja analizuje cały grafik kina i pokazuje mi listę osób na tej samej zmianie.
+*   **Kalkulator finansów** — miesięczny cel w PLN, wykres przepracowanych godzin, ile brakuje do celu.
+
+### 🏗️ Architektura
+
+```
+┌─────────────────────────────────────────────────────┐
+│                     UI Layer                        │
+│   ScheduleFragment · FinanceFragment · Widget       │
+└──────────────────────┬──────────────────────────────┘
+                       │ observe (LiveData)
+┌──────────────────────▼──────────────────────────────┐
+│                  ViewModel Layer                    │
+│              MainViewModel (MVVM)                   │
+└────────┬─────────────┬──────────────────┬───────────┘
+         │             │                  │
+┌────────▼──┐  ┌───────▼──────┐  ┌───────▼────────────┐
+│  Room DB  │  │  Gmail API   │  │   AlarmScheduler   │
+│ (SQLite)  │  │  + Retrofit  │  │  (AlarmManager)    │
+└────────┬──┘  └───────┬──────┘  └───────┬────────────┘
+         │             │                  │
+┌────────▼─────────────▼──────────────────▼────────────┐
+│              Data / Background Layer                 │
+│  ExcelParsingService · ShiftRepository · Receivers  │
+└──────────────────────────────────────────────────────┘
+```
 
 ### 🛠️ Tech Stack
-*   **Language:** Java
-*   **Architecture:** MVVM (Model-View-ViewModel) ensuring separation of concerns
-*   **Local Persistence:** Room Database (SQLite) with complex schema migrations and data relations
-*   **Networking & Auth:** Retrofit, Gson, Google Play Services Auth (OAuth2), Gmail API
-*   **Android APIs:** AlarmManager, BroadcastReceivers, Intents, Background Processing
-*   **UI/UX:** Material Design 3, ViewPager2, MPAndroidChart, Glassmorphism aesthetic
 
-### 🗺️ Future Roadmap
-The app is under active development. Upcoming features:
-*   **Dyspo-Bot:** Automating availability submissions. The app will generate availability schemas and potentially auto-fill Microsoft Forms via WebView JS injection.
-*   **OHS Guardian (BHP):** Algorithmic schedule validation to warn the user if the manager assigns an illegal "Clopen" shift (closing late night + opening early morning), violating the statutory 11-hour rest period.
-*   **White-label Release:** Refactoring the parsing logic behind interfaces to easily swap in `PdfScheduleParser` or `CsvScheduleParser`, aiming to release the app publicly for workers across different industries.
+| Warstwa | Technologia |
+|---------|------------|
+| Język | Java |
+| Architektura | MVVM + Repository Pattern |
+| Baza danych | Room (SQLite), custom migrations |
+| Sieć & Auth | Retrofit, Gson, Gmail API, OAuth 2.0 |
+| Android API | AlarmManager, BroadcastReceivers, Full-Screen Intents |
+| UI | Material Design 3, Glassmorphism, ViewPager2, MPAndroidChart |
+| Testy | JUnit 4 (18 unit testów logiki biznesowej) |
+
+### 🧪 Testy
+
+Projekt ma pokrycie testami dla krytycznej logiki biznesowej:
+```bash
+./gradlew testDebugUnitTest
+# BUILD SUCCESSFUL — 18 testów (ShiftUtils: overlap, nocne, finanse, widget)
+```
+
+### 🗺️ Plany
+
+*   **System Zastępstw** — UI do ręcznego dodawania/zarządzania współpracownikami na zmianie.
+*   **Dyspo-Bot** — automatyczne wypełnianie formularzy dyspozycyjności (WebView + JS injection).
+*   **Strażnik BHP** — detekcja nielegalnych grafikowych „clopenów" (zamknięcie + otwarcie bez 11h przerwy).
+*   **Photo Parser (Killer Feature)** — zdjęcie kartki z grafikiem → automatyczne dodanie zmian (ML Kit OCR lub Gemini Vision API).
+*   **Public Release / White-label** — otwarta architektura parserów (Excel/PDF/CSV/OCR), onboarding dla innych branż.
+
+---
+
+## 🇬🇧 About the Project
+
+Hi! I'm Kacper.
+
+Cinema schedules are chaotic — shifts arrive as Excel attachments, often last-minute, and many end deep in the night. Instead of manually copying everything to a calendar and tracking salary in a spreadsheet, I built an Android app that handles it all automatically. It's been my daily driver for months.
+
+This is **not** a tutorial copy-paste project. It's a battle-tested native app solving real operational problems I face every week.
+
+### 🔥 Engineering Highlights
+
+*   **Gmail & Excel Automation** — integrates with the Gmail API (OAuth 2.0) to fetch and parse `.xlsx` schedule attachments in the background using Apache POI.
+*   **SSoT Sync Engine** — a smart data-merge algorithm prevents automated Excel imports from overwriting manual edits (shift covers, hour corrections). Each manually touched record gets a protection flag (`isManuallyEdited`).
+*   **Bulletproof Alarm System — device-tested** — custom exact-timing alarm system tested on Samsung S24 FE (Android 16 / One UI 8.5):
+    *   Full-Screen Intent wakes device from deep sleep over the lockscreen.
+    *   Handles night shifts crossing midnight.
+    *   Reliable snooze (+10 min exact alarm).
+    *   Survives device reboots via `BOOT_COMPLETED` receiver.
+    *   Auto-cancels & reschedules when shift times are edited.
+*   **Crew Intersection Engine** — custom interval-overlap algorithm that instantly shows who you're sharing a shift with.
+*   **Financial Dashboard** — monthly salary goal tracker with dynamic charts.
+
+### 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                     UI Layer                        │
+│   ScheduleFragment · FinanceFragment · Widget       │
+└──────────────────────┬──────────────────────────────┘
+                       │ observe (LiveData)
+┌──────────────────────▼──────────────────────────────┐
+│                  ViewModel Layer                    │
+│              MainViewModel (MVVM)                   │
+└────────┬─────────────┬──────────────────┬───────────┘
+         │             │                  │
+┌────────▼──┐  ┌───────▼──────┐  ┌───────▼────────────┐
+│  Room DB  │  │  Gmail API   │  │   AlarmScheduler   │
+│ (SQLite)  │  │  + Retrofit  │  │  (AlarmManager)    │
+└────────┬──┘  └───────┬──────┘  └───────┬────────────┘
+         │             │                  │
+┌────────▼─────────────▼──────────────────▼────────────┐
+│              Data / Background Layer                 │
+│  ExcelParsingService · ShiftRepository · Receivers  │
+└──────────────────────────────────────────────────────┘
+```
+
+### 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | Java |
+| Architecture | MVVM + Repository Pattern |
+| Database | Room (SQLite), custom schema migrations |
+| Networking & Auth | Retrofit, Gson, Gmail API, OAuth 2.0 |
+| Android APIs | AlarmManager, BroadcastReceivers, Full-Screen Intents |
+| UI | Material Design 3, Glassmorphism, ViewPager2, MPAndroidChart |
+| Testing | JUnit 4 (18 unit tests covering core business logic) |
+
+### 🧪 Tests
+
+```bash
+./gradlew testDebugUnitTest
+# BUILD SUCCESSFUL — 18 tests (ShiftUtils: interval overlaps, night shifts, payroll, widget)
+```
+
+### 🗺️ Roadmap
+
+*   **Replacement System** — UI for manually managing co-worker swaps per shift.
+*   **Dyspo-Bot** — automated availability form filling (WebView + JS injection into MS Forms).
+*   **OHS Guardian** — detects illegal "Clopen" shifts (close + open without 11h rest break).
+*   **Photo Parser (Killer Feature)** — snap a photo of a paper schedule → shifts auto-imported (ML Kit OCR or Gemini Vision API).
+*   **Public / White-label Release** — open parser architecture (Excel/PDF/CSV/OCR), full onboarding for other industries.
 
 ---
 
 ### ⚙️ Local Setup
-To run this project locally:
+
+To run this project locally you'll need to configure your own Google Cloud credentials:
+
 1. Clone the repository.
-2. Create a project in the [Google Cloud Console](https://console.cloud.google.com/).
-3. Enable the **Gmail API** and configure the **OAuth Consent Screen**.
-4. Generate an OAuth 2.0 Client ID for Android and download the `credentials.json` file.
-5. Create a `keystore.properties` file in the root directory for signing configs.
-6. Build and run via Android Studio.
+2. Create a project in [Google Cloud Console](https://console.cloud.google.com/).
+3. Enable the **Gmail API** and set up the **OAuth Consent Screen**.
+4. Generate an OAuth 2.0 Android Client ID and save the config as `credentials.json` (already in `.gitignore`).
+5. Create `keystore.properties` in the root directory with your signing config (template in the repo, already in `.gitignore`).
+6. Open in Android Studio and run.
+
+### 📄 License
+
+MIT — see [LICENSE](LICENSE) file.
