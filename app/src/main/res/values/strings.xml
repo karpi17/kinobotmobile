@@ -11,6 +11,7 @@
 
     <!-- Widget -->
     <string name="widget_description">Najbliższa zmiana i ekipa na pulpicie</string>
+    <string name="widget_stack_description">Stos najbliższych zmian — przesuń żeby zobaczyć kolejne</string>
 
     <!-- Alarm Ringing -->
     <string name="alarm_title_wakeup">⏰ Czas do pracy!</string>

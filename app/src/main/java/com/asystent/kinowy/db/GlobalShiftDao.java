@@ -96,6 +96,17 @@ public interface GlobalShiftDao {
     List<GlobalShift> getShiftsByDate(String date);
 
     /**
+     * Jak getShiftsByDate, ale pomija rekord użytkownika (po imieniu) — używane
+     * przez widget żeby nie pokazywał siebie w liście ekipy.
+     *
+     * @param date       data yyyy-MM-dd
+     * @param excludeName imię i nazwisko użytkownika do pominięcia
+     */
+    @Query("SELECT * FROM global_shifts WHERE date = :date AND is_deleted = 0 AND name != :excludeName ORDER BY start_time ASC")
+    List<GlobalShift> getCrewByDateExcluding(String date, String excludeName);
+
+
+    /**
      * Zwraca unikalne imiona pracowników posortowane alfabetycznie.
      * <p>
      * Zastępuje stary słownik {@code active_employees} — źródłem prawdy

@@ -1,6 +1,10 @@
 package com.asystent.kinowy.ui;
 
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -8,7 +12,9 @@ import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.asystent.kinowy.R;
+import com.asystent.kinowy.models.Shift;
 import com.asystent.kinowy.viewmodel.MainViewModel;
+import com.asystent.kinowy.widget.ShiftWidgetProvider;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
@@ -16,6 +22,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.os.SystemClock;
+import java.util.List;
 
 /**
  * Główna aktywność aplikacji Asystent Kinowy.
@@ -40,8 +47,9 @@ public class MainActivity extends AppCompatActivity {
     private final FinanceFragment financeFragment = new FinanceFragment();
     private Fragment activeFragment;
 
-    // --- Easter Egg: 7 kliknięć ---
+    // --- Easter Egg: 7 kliknięć w toolbar ---
     private long[] mHits = new long[7];
+    private int mHitCount = 0; // licznik do feedbacku wibracji
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,10 +72,16 @@ public class MainActivity extends AppCompatActivity {
             toolbar.setOnClickListener(v -> {
                 System.arraycopy(mHits, 1, mHits, 0, mHits.length - 1);
                 mHits[mHits.length - 1] = SystemClock.uptimeMillis();
+                mHitCount++;
+
+                // Wibracja: krótki buzz na każde kliknięcie, mocniejszy po 4.
+                buzzEasterEgg(mHitCount);
+
                 if (mHits[0] >= (SystemClock.uptimeMillis() - 3000)) {
-                    // Wyczyszczenie, by nie odpalało w kółko
                     mHits = new long[7];
-                    checkEasterEgg();
+                    mHitCount = 0;
+                    // Opóźnienie 600ms — ostatni tap nie trafia odruchowo w "Dzięki!"
+                    new Handler(Looper.getMainLooper()).postDelayed(this::checkEasterEgg, 600);
                 }
             });
         }
@@ -126,6 +140,15 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    /** Wibracja feedbacku — buzz rośnie z każdym kliknięciem po 4. */
+    private void buzzEasterEgg(int count) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return;
+        Vibrator vib = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+        if (vib == null || !vib.hasVibrator()) return;
+        long duration = count >= 4 ? 60 : 20; // po połowie dłuższy buzz
+        vib.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
+    }
+
     private void checkEasterEgg() {
         GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(this);
         if (account != null && account.getEmail() != null) {
@@ -142,6 +165,42 @@ public class MainActivity extends AppCompatActivity {
                 .setView(dialogView)
                 .setPositiveButton("Dzięki!", null)
                 .show();
+    }
+
+    // ─── Deep-link z widgetu stack ────────────────────────────────────────
+
+    /**
+     * Wywoływane gdy widget stack kliknie w kartę i apka jest już otwarta (singleTop).
+     * Przełącza na zakładkę Grafik i otwiera dialog konkretnej zmiany.
+     */
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String shiftDate = intent.getStringExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
+        if (shiftDate != null && !shiftDate.isEmpty()) {
+            openShiftByDate(shiftDate);
+        }
+    }
+
+    private void openShiftByDate(String date) {
+        // Przełącz na zakładkę Grafik
+        BottomNavigationView bottomNav = findViewById(R.id.bottom_navigation);
+        if (bottomNav != null) {
+            bottomNav.setSelectedItemId(R.id.nav_schedule);
+        }
+        // Znajdź zmianę po dacie i otwórz dialog — na wątku głównym po krótkim opóźenieniu
+        // (fragment musi się wyrenderować zanim pokażemy dialog)
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            List<Shift> shifts = viewModel.getAllShifts().getValue();
+            if (shifts == null) return;
+            for (Shift shift : shifts) {
+                if (date.equals(shift.getDate()) && !shift.isReplacement()) {
+                    scheduleFragment.openShiftDialog(shift);
+                    return;
+                }
+            }
+        }, 300);
     }
 
 }

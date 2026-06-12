@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="4dp">
+
+    <!-- Stack kart ze zmianami -->
+    <StackView
+        android:id="@+id/sv_shifts"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:loopViews="true" />
+
+    <!-- Pusty stan — widoczny gdy brak zmian -->
+    <LinearLayout
+        android:id="@+id/widget_stack_empty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#1E1E1E"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎬"
+            android:textSize="28sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Brak zmian"
+            android:textColor="#888888"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp" />
+    </LinearLayout>
+
+</FrameLayout>

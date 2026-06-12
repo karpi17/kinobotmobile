@@ -61,17 +61,45 @@
         android:textColor="#CCCCCC"
         android:layout_marginTop="2dp" />
 
-    <!-- Stanowisko -->
+    <!-- Countdown / Status "Trwa teraz" -->
     <TextView
-        android:id="@+id/widget_category"
+        android:id="@+id/widget_countdown"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text=""
         android:textSize="12sp"
         android:textColor="#FF6600"
         android:textStyle="bold"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="2dp"
         android:visibility="gone" />
+
+    <!-- Stanowisko + ikona alarmu (jeden wiersz) -->
+    <LinearLayout
+        android:id="@+id/widget_category_row"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="4dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_category"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="12sp"
+            android:textColor="#FF6600"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_alarm_icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="  🔔"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <!-- Ekipa -->
     <TextView

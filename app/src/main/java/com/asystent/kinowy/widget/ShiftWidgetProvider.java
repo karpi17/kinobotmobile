@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.view.View;
 import android.widget.RemoteViews;
 
@@ -18,6 +19,7 @@ import com.asystent.kinowy.models.Shift;
 import com.asystent.kinowy.ui.MainActivity;
 import com.asystent.kinowy.utils.ShiftUtils;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -29,20 +31,20 @@ import java.util.concurrent.Executors;
 /**
  * AppWidgetProvider — widżet "Najbliższa Zmiana + Ekipa" na ekranie głównym.
  * <p>
- * Pobiera dane bezpośrednio z bazy Room (synchronicznie, na wątku w tle)
- * i aktualizuje RemoteViews. Kliknięcie otwiera {@link MainActivity}.
+ * Pobiera dane bezpośrednio z bazy Room (synchronicznie, na wątku w tle).
+ * Odświeżanie: co 30 min (XML), po syncu (triggerUpdate), ręczne (przycisk).
  * <p>
- * Odświeżanie:
- * <ul>
- *   <li><b>Automatyczne:</b> co 30 minut ({@code updatePeriodMillis} w XML)</li>
- *   <li><b>Po synchronizacji:</b> {@link #triggerUpdate(Context)} wywoływane z ViewModel</li>
- *   <li><b>Ręczne:</b> przycisk odświeżania na widżecie</li>
- * </ul>
+ * v2.0 — dodano: countdown, status "Trwa teraz", ikona alarmu,
+ * filtrowanie isReplacement, wykluczanie własnego imienia z ekipy.
  */
 public class ShiftWidgetProvider extends AppWidgetProvider {
 
-    /** Akcja dla przycisku odświeżania na widżecie. */
-    private static final String ACTION_REFRESH = "com.asystent.kinowy.WIDGET_REFRESH";
+    public static final String ACTION_REFRESH = "com.asystent.kinowy.WIDGET_REFRESH";
+    /** Klucz Intent extra do deep-linku konkretnej zmiany z widgetu stack. */
+    public static final String EXTRA_OPEN_SHIFT_DATE = "open_shift_date";
+
+    private static final String PREFS_NAME = "asystent_kinowy_prefs";
+    private static final String PREF_USER_NAME = "user_name";
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -57,16 +59,11 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
     @Override
     public void onReceive(Context context, Intent intent) {
         super.onReceive(context, intent);
-        // Obsługa przycisku odświeżania
         if (ACTION_REFRESH.equals(intent.getAction())) {
             triggerUpdate(context);
         }
     }
 
-    /**
-     * Aktualizuje pojedynczy widżet.
-     * Pobiera dane z bazy na wątku w tle, potem aktualizuje RemoteViews.
-     */
     private void updateWidget(Context context, AppWidgetManager manager, int widgetId) {
         executor.execute(() -> {
             try {
@@ -74,16 +71,14 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
                 ShiftDao shiftDao = db.shiftDao();
                 GlobalShiftDao globalShiftDao = db.globalShiftDao();
 
-                // 1. Znajdź najbliższą zmianę
+                String userName = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        .getString(PREF_USER_NAME, "");
+
+                // Filtrujemy zmiany oddane (isReplacement=true) — to nie Twoje zmiany
                 Shift nextShift = findNextShift(shiftDao.getAllShiftsSync());
-
-                // 2. Zbuduj RemoteViews
-                RemoteViews views = buildViews(context, nextShift, globalShiftDao);
-
-                // 3. Aktualizuj widżet
+                RemoteViews views = buildViews(context, nextShift, globalShiftDao, userName);
                 manager.updateAppWidget(widgetId, views);
             } catch (Exception e) {
-                // Fallback — pokaż pustą kartę
                 RemoteViews fallback = new RemoteViews(context.getPackageName(), R.layout.widget_shift);
                 fallback.setTextViewText(R.id.widget_time, "Błąd odświeżania");
                 manager.updateAppWidget(widgetId, fallback);
@@ -91,20 +86,17 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
         });
     }
 
-    /**
-     * Buduje RemoteViews z danymi o najbliższej zmianie i współpracownikach.
-     */
-    private RemoteViews buildViews(Context context, Shift shift, GlobalShiftDao globalShiftDao) {
+    private RemoteViews buildViews(Context context, Shift shift, GlobalShiftDao globalShiftDao, String userName) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_shift);
 
-        // ─── PendingIntent: kliknięcie → MainActivity ───
+        // Kliknięcie w tło widgetu → otwórz MainActivity
         Intent openApp = new Intent(context, MainActivity.class);
         openApp.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent openPending = PendingIntent.getActivity(
                 context, 0, openApp, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_root, openPending);
 
-        // ─── PendingIntent: przycisk odświeżania ───
+        // Przycisk odświeżania
         Intent refreshIntent = new Intent(context, ShiftWidgetProvider.class);
         refreshIntent.setAction(ACTION_REFRESH);
         PendingIntent refreshPending = PendingIntent.getBroadcast(
@@ -112,40 +104,55 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
         views.setOnClickPendingIntent(R.id.btn_widget_refresh, refreshPending);
 
         if (shift == null) {
-            // Brak zmian
             views.setTextViewText(R.id.widget_date, "—");
             views.setTextViewText(R.id.widget_time, "Brak zaplanowanych zmian");
-            views.setViewVisibility(R.id.widget_category, View.GONE);
+            views.setViewVisibility(R.id.widget_countdown, View.GONE);
+            views.setViewVisibility(R.id.widget_category_row, View.GONE);
             views.setViewVisibility(R.id.widget_crew, View.GONE);
             return views;
         }
 
-        // ─── Data ───
+        // Data
         views.setTextViewText(R.id.widget_date, formatDate(shift.getDate()));
 
-        // ─── Godziny ───
+        // Godziny + ikona zamka
         String moon = shift.isClosingShift() ? "🌙 " : "";
-        views.setTextViewText(R.id.widget_time,
-                moon + shift.getStartTime() + " – " + shift.getEndTime());
+        views.setTextViewText(R.id.widget_time, moon + shift.getStartTime() + " – " + shift.getEndTime());
 
-        // ─── Stanowisko ───
-        String cat = shift.getCategory();
-        if (cat != null && !cat.isEmpty() && !"UNKNOWN".equals(cat)) {
-            views.setTextViewText(R.id.widget_category, cat);
-            views.setViewVisibility(R.id.widget_category, View.VISIBLE);
+        // ═══ Countdown / status "Trwa teraz" ═══
+        String countdown = buildCountdown(shift);
+        if (countdown != null) {
+            views.setTextViewText(R.id.widget_countdown, countdown);
+            views.setViewVisibility(R.id.widget_countdown, View.VISIBLE);
         } else {
-            views.setViewVisibility(R.id.widget_category, View.GONE);
+            views.setViewVisibility(R.id.widget_countdown, View.GONE);
         }
 
-        // ─── Ekipa (overlap z global_shifts) ───
-        try {
-            List<GlobalShift> dailyShifts = globalShiftDao.getShiftsByDate(shift.getDate());
-            List<GlobalShift> overlapping = ShiftUtils.getOverlappingShifts(
-                    shift.getStartTime(), shift.getEndTime(), dailyShifts);
+        // ═══ Stanowisko + ikona alarmu ═══
+        String cat = shift.getCategory();
+        boolean hasCategory = cat != null && !cat.isEmpty() && !"UNKNOWN".equals(cat);
+        if (hasCategory) {
+            views.setTextViewText(R.id.widget_category, cat);
+            views.setViewVisibility(R.id.widget_category_row, View.VISIBLE);
 
+            // Alarm — sprawdź czy GlobalShift ma alarm
+            boolean hasAlarm = checkAlarm(globalShiftDao, shift.getDate(), shift.getStartTime());
+            views.setViewVisibility(R.id.widget_alarm_icon, hasAlarm ? View.VISIBLE : View.GONE);
+        } else {
+            views.setViewVisibility(R.id.widget_category_row, View.GONE);
+        }
+
+        // ═══ Ekipa (bez siebie samego) ═══
+        try {
+            String resolvedUser = userName.isEmpty() ? null : userName;
+            List<GlobalShift> crew = resolvedUser != null
+                    ? globalShiftDao.getCrewByDateExcluding(shift.getDate(), resolvedUser)
+                    : globalShiftDao.getShiftsByDate(shift.getDate());
+
+            List<GlobalShift> overlapping = ShiftUtils.getOverlappingShifts(
+                    shift.getStartTime(), shift.getEndTime(), crew);
             if (overlapping != null && !overlapping.isEmpty()) {
-                String crewText = ShiftUtils.formatWidgetCrew(overlapping);
-                views.setTextViewText(R.id.widget_crew, crewText);
+                views.setTextViewText(R.id.widget_crew, ShiftUtils.formatWidgetCrew(overlapping));
                 views.setViewVisibility(R.id.widget_crew, View.VISIBLE);
             } else {
                 views.setViewVisibility(R.id.widget_crew, View.GONE);
@@ -158,22 +165,31 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
     }
 
     /**
-     * Znajduje najbliższą przyszłą zmianę z listy.
+     * Szuka najbliższej zmiany spośród listy — pomija zmiany oddane (isReplacement=true).
      */
     private Shift findNextShift(List<Shift> shifts) {
         if (shifts == null || shifts.isEmpty()) return null;
-
         LocalDateTime now = LocalDateTime.now();
         Shift upcoming = null;
+        Shift ongoing = null;
         LocalDateTime upcomingTime = null;
 
         for (Shift shift : shifts) {
+            // Zmiany oddane = nietwoje, ignoruj
+            if (shift.isReplacement()) continue;
             if (shift.getDate() == null || shift.getStartTime() == null) continue;
             try {
                 LocalDate date = LocalDate.parse(shift.getDate());
-                LocalTime time = LocalTime.parse(shift.getStartTime(), TIME_FMT);
-                LocalDateTime shiftStart = LocalDateTime.of(date, time);
-                if (shiftStart.isAfter(now)) {
+                LocalTime startTime = LocalTime.parse(shift.getStartTime(), TIME_FMT);
+                LocalDateTime shiftStart = LocalDateTime.of(date, startTime);
+
+                // Oblicz koniec (uwzględnij zamki przechodzące przez północ)
+                LocalDateTime shiftEnd = buildShiftEnd(date, shift.getEndTime(), shift.isClosingShift());
+
+                if (now.isAfter(shiftStart) && now.isBefore(shiftEnd)) {
+                    // Trwa teraz — priorytet
+                    ongoing = shift;
+                } else if (shiftStart.isAfter(now)) {
                     if (upcomingTime == null || shiftStart.isBefore(upcomingTime)) {
                         upcomingTime = shiftStart;
                         upcoming = shift;
@@ -181,12 +197,68 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
                 }
             } catch (Exception ignored) {}
         }
-        return upcoming;
+        // "Trwa teraz" bierze pierwszeństwo nad "najbliższy"
+        return ongoing != null ? ongoing : upcoming;
     }
 
     /**
-     * Formatuje datę do czytelnej formy polskiej.
+     * Buduje tekst countdownu:
+     * - "🟢 Trwa teraz" gdy zmiana w toku
+     * - "za Xh Ymin" gdy zmiana w przyszłości
+     * - null gdy nie da się obliczyć
      */
+    private String buildCountdown(Shift shift) {
+        try {
+            LocalDate date = LocalDate.parse(shift.getDate());
+            LocalTime startTime = LocalTime.parse(shift.getStartTime(), TIME_FMT);
+            LocalDateTime shiftStart = LocalDateTime.of(date, startTime);
+            LocalDateTime shiftEnd = buildShiftEnd(date, shift.getEndTime(), shift.isClosingShift());
+            LocalDateTime now = LocalDateTime.now();
+
+            if (now.isAfter(shiftStart) && now.isBefore(shiftEnd)) {
+                return "🟢 Trwa teraz";
+            }
+            if (shiftStart.isAfter(now)) {
+                Duration diff = Duration.between(now, shiftStart);
+                long hours = diff.toHours();
+                long minutes = diff.toMinutesPart();
+                if (hours > 0) {
+                    return "za " + hours + "h " + minutes + "min";
+                } else {
+                    return "za " + minutes + " min";
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /**
+     * Sprawdza czy GlobalShift powiązany z tą zmianą ma aktywny alarm.
+     */
+    private boolean checkAlarm(GlobalShiftDao dao, String date, String startTime) {
+        try {
+            GlobalShift gs = dao.getShiftByDateAndStart(date, startTime);
+            return gs != null && gs.isHasAlarm();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Oblicza LocalDateTime końca zmiany z uwzględnieniem zamków (koniec po północy = +1 dzień).
+     */
+    private LocalDateTime buildShiftEnd(LocalDate date, String endTimeStr, boolean isClosing) {
+        if (endTimeStr == null || endTimeStr.isEmpty()) {
+            return LocalDateTime.of(date, LocalTime.MAX);
+        }
+        LocalTime endTime = LocalTime.parse(endTimeStr, TIME_FMT);
+        // Zamek: koniec przed 05:00 → następny dzień
+        if (isClosing && endTime.isBefore(LocalTime.of(5, 0))) {
+            return LocalDateTime.of(date.plusDays(1), endTime);
+        }
+        return LocalDateTime.of(date, endTime);
+    }
+
     private String formatDate(String isoDate) {
         if (isoDate == null) return "—";
         try {
@@ -201,18 +273,6 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // Statyczne API — wywoływane z zewnątrz (ViewModel, etc.)
-    // ═══════════════════════════════════════════════════════════════════
-
-    /**
-     * Wymusza aktualizację wszystkich instancji widżetu.
-     * <p>
-     * Wywoływane po synchronizacji grafiku z Gmaila
-     * oraz przez przycisk odświeżania na samym widżecie.
-     *
-     * @param context dowolny kontekst (Application, Activity, BroadcastReceiver)
-     */
     public static void triggerUpdate(Context context) {
         AppWidgetManager manager = AppWidgetManager.getInstance(context);
         ComponentName widget = new ComponentName(context, ShiftWidgetProvider.class);

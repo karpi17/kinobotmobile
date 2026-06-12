@@ -447,6 +447,14 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
      * Pokazuje dialog dodawania lub edycji zmiany.
      * @param shift Zmiana do edycji, lub null jeśli dodajemy nową.
      */
+    /**
+     * Publiczne API dla MainActivity — otwiera dialog edycji danej zmiany.
+     * Używane przez deep-link z widgetu stack po kliknięciu w kartę.
+     */
+    public void openShiftDialog(@Nullable Shift shift) {
+        showShiftDialog(shift);
+    }
+
     private void showShiftDialog(@Nullable Shift shift) {
         boolean isEdit = shift != null;
 
