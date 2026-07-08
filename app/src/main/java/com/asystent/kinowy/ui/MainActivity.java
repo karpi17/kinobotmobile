@@ -49,7 +49,8 @@ public class MainActivity extends AppCompatActivity {
 
     // --- Easter Egg: 7 kliknięć w toolbar ---
     private long[] mHits = new long[7];
-    private int mHitCount = 0; // licznik do feedbacku wibracji
+    private int mHitCount = 0;
+    private android.widget.Toast easterEggToast;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,11 +78,20 @@ public class MainActivity extends AppCompatActivity {
                 // Wibracja: krótki buzz na każde kliknięcie, mocniejszy po 4.
                 buzzEasterEgg(mHitCount);
 
+                // Feedback wizualny (Toast) dla kliknięć
+                int requiredClicks = 7;
+                if (mHitCount > 0 && mHitCount < requiredClicks) {
+                    if (easterEggToast != null) easterEggToast.cancel();
+                    easterEggToast = android.widget.Toast.makeText(this, "Jeszcze " + (requiredClicks - mHitCount) + " kliknięć...", android.widget.Toast.LENGTH_SHORT);
+                    easterEggToast.show();
+                }
+
                 if (mHits[0] >= (SystemClock.uptimeMillis() - 3000)) {
                     mHits = new long[7];
                     mHitCount = 0;
+                    if (easterEggToast != null) easterEggToast.cancel();
                     // Opóźnienie 600ms — ostatni tap nie trafia odruchowo w "Dzięki!"
-                    new Handler(Looper.getMainLooper()).postDelayed(this::checkEasterEgg, 600);
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::checkEasterEgg, 600);
                 }
             });
         }
@@ -163,6 +173,7 @@ public class MainActivity extends AppCompatActivity {
         View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_hall_of_fame, null);
         new MaterialAlertDialogBuilder(this)
                 .setView(dialogView)
+                .setCancelable(false) // Zapobiega przypadkowemu zamknięciu kliknięciem w tło
                 .setPositiveButton("Dzięki!", null)
                 .show();
     }
