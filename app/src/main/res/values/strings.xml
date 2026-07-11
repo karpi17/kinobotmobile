@@ -24,4 +24,8 @@
     <string name="alarm_channel_desc">Powiadomienia alarmu budzika przed zmianą</string>
     <string name="alarm_notification_title">⏰ Budzik — Czas do pracy!</string>
     <string name="alarm_notification_text">Zmiana o %1$s (%2$s)</string>
+
+    <!-- Navigation Drawer -->
+    <string name="navigation_drawer_open">Otwórz menu</string>
+    <string name="navigation_drawer_close">Zamknij menu</string>
 </resources>

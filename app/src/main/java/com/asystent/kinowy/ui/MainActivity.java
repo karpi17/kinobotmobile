@@ -3,54 +3,71 @@ package com.asystent.kinowy.ui;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.LayoutInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
+import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.asystent.kinowy.R;
 import com.asystent.kinowy.models.Shift;
+import com.asystent.kinowy.notifications.AlarmScheduler;
 import com.asystent.kinowy.viewmodel.MainViewModel;
 import com.asystent.kinowy.widget.ShiftWidgetProvider;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.os.SystemClock;
+import com.google.android.material.navigation.NavigationView;
+
 import java.util.List;
 
 /**
- * Główna aktywność aplikacji Asystent Kinowy.
+ * Główna aktywność aplikacji KinoBot.
  * <p>
- * Pełni rolę hosta nawigacji — zarządza fragmentami
- * za pomocą {@link BottomNavigationView}.
+ * Host nawigacji — zarządza fragmentami za pomocą {@link DrawerLayout} + {@link NavigationView}.
+ * Fragmenty przełączane przez hide/show (bez re-create przy każdym tapie).
  * <p>
  * Fragmenty:
  * <ul>
- *   <li>{@link DashboardFragment} — Pulpit (logowanie, synchronizacja)</li>
- *   <li>{@link ScheduleFragment} — Grafik (lista zmian)</li>
- *   <li>{@link FinanceFragment} — Finanse (straty/rozliczenia)</li>
+ *   <li>{@link DashboardFragment}  — Pulpit (sync, carousel zmian)</li>
+ *   <li>{@link ScheduleFragment}   — Grafik (lista zmian + dialogi)</li>
+ *   <li>{@link FinanceFragment}    — Finanse (payroll, napiwki, straty)</li>
+ *   <li>{@link ProfileFragment}    — Profil (imię, stawka, ustawienia)</li>
  * </ul>
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity
+        implements NavigationView.OnNavigationItemSelectedListener {
 
     private MainViewModel viewModel;
 
-    // Fragmenty — trzymamy referencje, żeby nie re-kreować przy każdym kliknięciu
+    // ─── Fragmenty (trzymamy referencje — nie re-tworzymy przy każdym tapie) ───
     private final DashboardFragment dashboardFragment = new DashboardFragment();
-    private final ScheduleFragment scheduleFragment = new ScheduleFragment();
-    private final FinanceFragment financeFragment = new FinanceFragment();
+    private final ScheduleFragment  scheduleFragment  = new ScheduleFragment();
+    private final FinanceFragment   financeFragment   = new FinanceFragment();
+    private final ProfileFragment   profileFragment   = new ProfileFragment();
     private Fragment activeFragment;
 
-    // --- Easter Egg: 7 kliknięć w toolbar ---
-    private long[] mHits = new long[7];
-    private int mHitCount = 0;
-    private android.widget.Toast easterEggToast;
+    // ─── Drawer ─────────────────────────────────────────────────────────────────
+    private DrawerLayout    drawerLayout;
+    private NavigationView  navigationView;
+
+    // ─── Easter Egg: 7 kliknięć w TYTUŁ toolbara ────────────────────────────────
+    private long[]  mHits     = new long[7];
+    private int     mHitCount = 0;
+    private Toast   easterEggToast;
+
+    // ────────────────────────────────────────────────────────────────────────────
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,94 +77,139 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // --- ViewModel ---
+        // ─── ViewModel ──────────────────────────────────────────────────────────
         viewModel = new ViewModelProvider(this).get(MainViewModel.class);
 
-        // --- Bottom Navigation ---
-        BottomNavigationView bottomNav = findViewById(R.id.bottom_navigation);
-        setupBottomNavigation(bottomNav);
+        // ─── Toolbar ────────────────────────────────────────────────────────────
+        Toolbar toolbar = findViewById(R.id.toolbar_main);
+        setSupportActionBar(toolbar);
 
-        // --- Easter Egg (Konami Code na Toolbarze) ---
-        View toolbar = findViewById(R.id.toolbar_main);
-        if (toolbar != null) {
-            toolbar.setOnClickListener(v -> {
-                System.arraycopy(mHits, 1, mHits, 0, mHits.length - 1);
-                mHits[mHits.length - 1] = SystemClock.uptimeMillis();
-                mHitCount++;
+        // ─── Drawer + Toggle (hamburger ☰) ──────────────────────────────────────
+        drawerLayout   = findViewById(R.id.drawer_layout);
+        navigationView = findViewById(R.id.navigation_view);
 
-                // Wibracja: krótki buzz na każde kliknięcie, mocniejszy po 4.
-                buzzEasterEgg(mHitCount);
+        ActionBarDrawerToggle toggle = new ActionBarDrawerToggle(
+                this, drawerLayout, toolbar,
+                R.string.navigation_drawer_open,
+                R.string.navigation_drawer_close);
+        drawerLayout.addDrawerListener(toggle);
+        toggle.syncState();
 
-                // Feedback wizualny (Toast) dla kliknięć
-                int requiredClicks = 7;
-                if (mHitCount > 0 && mHitCount < requiredClicks) {
-                    if (easterEggToast != null) easterEggToast.cancel();
-                    easterEggToast = android.widget.Toast.makeText(this, "Jeszcze " + (requiredClicks - mHitCount) + " kliknięć...", android.widget.Toast.LENGTH_SHORT);
-                    easterEggToast.show();
-                }
+        navigationView.setNavigationItemSelectedListener(this);
 
-                if (mHits[0] >= (SystemClock.uptimeMillis() - 3000)) {
-                    mHits = new long[7];
-                    mHitCount = 0;
-                    if (easterEggToast != null) easterEggToast.cancel();
-                    // Opóźnienie 600ms — ostatni tap nie trafia odruchowo w "Dzięki!"
-                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::checkEasterEgg, 600);
-                }
-            });
-        }
+        // ─── Easter Egg — klik w TYTUŁ toolbara (TextView w środku) ────────────
+        // MaterialToolbar nie eksponuje tytułu jako osobnego View, więc szukamy
+        // pierwszego TextView wewnątrz toolbara (jest nim tytuł).
+        setupEasterEgg(toolbar);
 
-        // --- Domyślny fragment ---
+        // ─── Domyślny fragment ───────────────────────────────────────────────────
         if (savedInstanceState == null) {
             activeFragment = dashboardFragment;
             getSupportFragmentManager().beginTransaction()
-                    .add(R.id.fragment_container, financeFragment, "finance").hide(financeFragment)
-                    .add(R.id.fragment_container, scheduleFragment, "schedule").hide(scheduleFragment)
+                    .add(R.id.fragment_container, profileFragment,   "profile").hide(profileFragment)
+                    .add(R.id.fragment_container, financeFragment,   "finance").hide(financeFragment)
+                    .add(R.id.fragment_container, scheduleFragment,  "schedule").hide(scheduleFragment)
                     .add(R.id.fragment_container, dashboardFragment, "dashboard")
                     .commit();
+            navigationView.setCheckedItem(R.id.nav_dashboard);
         }
 
-        // --- Alarms ---
+        // ─── Alarms — obserwuj zmiany i przelicz alarmy ─────────────────────────
         viewModel.getAllShifts().observe(this, shifts -> {
             if (shifts != null) {
-                com.asystent.kinowy.notifications.AlarmScheduler.scheduleAlarms(this, shifts);
+                AlarmScheduler.scheduleAlarms(this, shifts);
             }
         });
+
+        // ─── Uprawnienie do powiadomień (Android 13+) ────────────────────────────
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
             }
         }
     }
 
+    // ─── NavigationView.OnNavigationItemSelectedListener ────────────────────────
+
+    @Override
+    public boolean onNavigationItemSelected(@NonNull MenuItem item) {
+        Fragment selected;
+        int id = item.getItemId();
+
+        if      (id == R.id.nav_dashboard) selected = dashboardFragment;
+        else if (id == R.id.nav_schedule)  selected = scheduleFragment;
+        else if (id == R.id.nav_finance)   selected = financeFragment;
+        else if (id == R.id.nav_profile)   selected = profileFragment;
+        else return false;
+
+        showFragment(selected);
+        drawerLayout.closeDrawers();
+        return true;
+    }
+
+    /** Podmienia widoczny fragment bez re-tworzenia ukrytych. */
+    private void showFragment(Fragment fragment) {
+        if (fragment == activeFragment) return;
+        getSupportFragmentManager().beginTransaction()
+                .hide(activeFragment)
+                .show(fragment)
+                .commit();
+        activeFragment = fragment;
+    }
+
+    // ─── Back — zamknij szufladę zanim wyjdziesz z apki ────────────────────────
+
+    @Override
+    public void onBackPressed() {
+        if (drawerLayout.isDrawerOpen(androidx.core.view.GravityCompat.START)) {
+            drawerLayout.closeDrawer(androidx.core.view.GravityCompat.START);
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    // ─── Easter Egg ─────────────────────────────────────────────────────────────
+
     /**
-     * Konfiguruje obsługę kliknięć w BottomNavigationView.
-     * Podmienia widoczny fragment bez niszczenia ukrytych.
+     * Podpina Easter Egg pod pierwszy TextView w toolbarze (= tytuł "KinoBot").
+     * Wymaga 7 kliknięć w ciągu 3 sekund.
      */
-    private void setupBottomNavigation(@NonNull BottomNavigationView bottomNav) {
-        bottomNav.setOnItemSelectedListener(item -> {
-            Fragment selectedFragment;
-            int itemId = item.getItemId();
-
-            if (itemId == R.id.nav_dashboard) {
-                selectedFragment = dashboardFragment;
-            } else if (itemId == R.id.nav_schedule) {
-                selectedFragment = scheduleFragment;
-            } else if (itemId == R.id.nav_finance) {
-                selectedFragment = financeFragment;
-            } else {
-                return false;
+    private void setupEasterEgg(Toolbar toolbar) {
+        // Szukamy TextView z tytułem wewnątrz toolbara
+        for (int i = 0; i < toolbar.getChildCount(); i++) {
+            View child = toolbar.getChildAt(i);
+            if (child instanceof TextView) {
+                child.setOnClickListener(v -> handleEasterEggTap());
+                break;
             }
+        }
+    }
 
-            if (selectedFragment != activeFragment) {
-                getSupportFragmentManager().beginTransaction()
-                        .hide(activeFragment)
-                        .show(selectedFragment)
-                        .commit();
-                activeFragment = selectedFragment;
-            }
+    private void handleEasterEggTap() {
+        System.arraycopy(mHits, 1, mHits, 0, mHits.length - 1);
+        mHits[mHits.length - 1] = SystemClock.uptimeMillis();
+        mHitCount++;
 
-            return true;
-        });
+        buzzEasterEgg(mHitCount);
+
+        final int REQUIRED = 7;
+        if (mHitCount > 0 && mHitCount < REQUIRED) {
+            if (easterEggToast != null) easterEggToast.cancel();
+            easterEggToast = Toast.makeText(
+                    this,
+                    "Jeszcze " + (REQUIRED - mHitCount) + " kliknięć...",
+                    Toast.LENGTH_SHORT);
+            easterEggToast.show();
+        }
+
+        if (mHits[0] >= (SystemClock.uptimeMillis() - 3000)) {
+            mHits = new long[7];
+            mHitCount = 0;
+            if (easterEggToast != null) easterEggToast.cancel();
+            new Handler(Looper.getMainLooper()).postDelayed(this::checkEasterEgg, 600);
+        }
     }
 
     /** Wibracja feedbacku — buzz rośnie z każdym kliknięciem po 4. */
@@ -155,17 +217,15 @@ public class MainActivity extends AppCompatActivity {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return;
         Vibrator vib = (Vibrator) getSystemService(VIBRATOR_SERVICE);
         if (vib == null || !vib.hasVibrator()) return;
-        long duration = count >= 4 ? 60 : 20; // po połowie dłuższy buzz
+        long duration = count >= 4 ? 60 : 20;
         vib.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE));
     }
 
     private void checkEasterEgg() {
         GoogleSignInAccount account = GoogleSignIn.getLastSignedInAccount(this);
-        if (account != null && account.getEmail() != null) {
-            String email = account.getEmail();
-            if ("kacperwerner05@gmail.com".equals(email)) {
-                showHallOfFame();
-            }
+        if (account != null && account.getEmail() != null
+                && "kacperwerner05@gmail.com".equals(account.getEmail())) {
+            showHallOfFame();
         }
     }
 
@@ -173,16 +233,16 @@ public class MainActivity extends AppCompatActivity {
         View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_hall_of_fame, null);
         new MaterialAlertDialogBuilder(this)
                 .setView(dialogView)
-                .setCancelable(false) // Zapobiega przypadkowemu zamknięciu kliknięciem w tło
+                .setCancelable(false)
                 .setPositiveButton("Dzięki!", null)
                 .show();
     }
 
-    // ─── Deep-link z widgetu stack ────────────────────────────────────────
+    // ─── Deep-link z widgetu stack ───────────────────────────────────────────────
 
     /**
-     * Wywoływane gdy widget stack kliknie w kartę i apka jest już otwarta (singleTop).
-     * Przełącza na zakładkę Grafik i otwiera dialog konkretnej zmiany.
+     * Wywoływane gdy widget stack kliknie kartę, a apka jest już otwarta (singleTop).
+     * Przełącza na Grafik i otwiera dialog konkretnej zmiany.
      */
     @Override
     protected void onNewIntent(android.content.Intent intent) {
@@ -195,13 +255,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openShiftByDate(String date) {
-        // Przełącz na zakładkę Grafik
-        BottomNavigationView bottomNav = findViewById(R.id.bottom_navigation);
-        if (bottomNav != null) {
-            bottomNav.setSelectedItemId(R.id.nav_schedule);
-        }
-        // Znajdź zmianę po dacie i otwórz dialog — na wątku głównym po krótkim opóźenieniu
-        // (fragment musi się wyrenderować zanim pokażemy dialog)
+        // Przełącz na Grafik przez drawer
+        showFragment(scheduleFragment);
+        navigationView.setCheckedItem(R.id.nav_schedule);
+
+        // Otwórz dialog po wyrenderowaniu fragmentu
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             List<Shift> shifts = viewModel.getAllShifts().getValue();
             if (shifts == null) return;
@@ -213,5 +271,4 @@ public class MainActivity extends AppCompatActivity {
             }
         }, 300);
     }
-
 }

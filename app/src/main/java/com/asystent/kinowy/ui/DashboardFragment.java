@@ -53,12 +53,6 @@ public class DashboardFragment extends Fragment {
     private SignInButton btnGoogleSignIn;
     private TextView tvSyncStatus;
 
-    // Nazwisko
-    private View layoutNameInput;
-    private TextInputEditText etUserName;
-    private MaterialButton btnSaveName;
-    private TextView tvSavedName;
-
     // Carousel
     private androidx.viewpager2.widget.ViewPager2 vpDashboardCarousel;
     private com.google.android.material.tabs.TabLayout tabDashboardDots;
@@ -77,7 +71,6 @@ public class DashboardFragment extends Fragment {
     private MaterialButton btnSyncSchedule;
     private MaterialButton btnSetGoal;
     private MaterialButton btnSetNotification;
-    private MaterialButton btnChangeNameAction;
 
     @Nullable
     @Override
@@ -99,11 +92,6 @@ public class DashboardFragment extends Fragment {
         btnUnknownShiftsAlert = view.findViewById(R.id.btn_unknown_shifts_alert);
         btnMissingReportAlert = view.findViewById(R.id.btn_missing_report_alert);
 
-        layoutNameInput = view.findViewById(R.id.layout_name_input);
-        etUserName = view.findViewById(R.id.et_user_name);
-        btnSaveName = view.findViewById(R.id.btn_save_name);
-        tvSavedName = view.findViewById(R.id.tv_saved_name);
-
         vpDashboardCarousel = view.findViewById(R.id.vp_dashboard_carousel);
         tabDashboardDots = view.findViewById(R.id.tab_dashboard_dots);
         carouselAdapter = new DashboardCarouselAdapter();
@@ -120,13 +108,17 @@ public class DashboardFragment extends Fragment {
         btnSyncSchedule = view.findViewById(R.id.btn_sync_schedule);
         btnSetGoal = view.findViewById(R.id.btn_set_goal);
         btnSetNotification = view.findViewById(R.id.btn_set_notification);
-        btnChangeNameAction = view.findViewById(R.id.btn_change_name_action);
 
         // Load goal
         int savedGoal = getPrefs().getInt(PREF_MONTHLY_GOAL, 100);
         viewModel.getMonthlyHoursGoal().setValue(savedGoal);
 
-        setupNameInput();
+        // Załaduj zapisane imię do ViewModelu (widgety, filtry parsera)
+        String savedName = getPrefs().getString(PREF_USER_NAME, "");
+        if (!savedName.isEmpty()) {
+            viewModel.setTargetUserName(savedName);
+        }
+
         setupQuickActions();
         observeDashboardData();
         observeSyncStatus();
@@ -144,42 +136,6 @@ public class DashboardFragment extends Fragment {
         return requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    // ─── Nazwisko ────────────────────────────────────────────────────────
-    private void setupNameInput() {
-        String savedName = getPrefs().getString(PREF_USER_NAME, null);
-        if (savedName != null && !savedName.isEmpty()) {
-            showSavedNameState(savedName);
-        } else {
-            showNameInputState();
-        }
-
-        btnSaveName.setOnClickListener(v -> {
-            String name = etUserName.getText() != null ? etUserName.getText().toString().trim() : "";
-            if (name.isEmpty()) {
-                etUserName.setError("Wpisz imię i nazwisko");
-                return;
-            }
-            getPrefs().edit().putString(PREF_USER_NAME, name).apply();
-            viewModel.setTargetUserName(name);
-            showSavedNameState(name);
-        });
-    }
-
-    private void showSavedNameState(String name) {
-        layoutNameInput.setVisibility(View.GONE);
-        tvSavedName.setVisibility(View.VISIBLE);
-        tvSavedName.setText("👤 " + name);
-        viewModel.setTargetUserName(name);
-    }
-
-    private void showNameInputState() {
-        layoutNameInput.setVisibility(View.VISIBLE);
-        tvSavedName.setVisibility(View.GONE);
-        String current = getPrefs().getString(PREF_USER_NAME, "");
-        if (etUserName != null && current != null) {
-            etUserName.setText(current);
-        }
-    }
 
     // ─── Quick Actions ────────────────────────────────────────────────────
     private void setupQuickActions() {
@@ -236,8 +192,6 @@ public class DashboardFragment extends Fragment {
 
         btnSyncSchedule.setOnClickListener(v -> viewModel.syncSchedule());
         btnSyncSchedule.setEnabled(false);
-
-        btnChangeNameAction.setOnClickListener(v -> showNameInputState());
 
         btnPayrollDetails.setOnClickListener(v -> {
             MainViewModel.PayrollInfo payroll = viewModel.getMonthlyPayroll().getValue();

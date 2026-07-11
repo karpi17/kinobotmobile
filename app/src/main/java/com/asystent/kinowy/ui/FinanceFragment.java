@@ -1,7 +1,5 @@
 package com.asystent.kinowy.ui;
 
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -40,8 +38,6 @@ import java.util.Locale;
  */
 public class FinanceFragment extends Fragment {
 
-    private static final String PREFS_NAME = "asystent_kinowy_prefs";
-    private static final String PREF_HOURLY_RATE = "hourly_rate";
 
     private MainViewModel viewModel;
     private LossAdapter lossAdapter;
@@ -49,11 +45,6 @@ public class FinanceFragment extends Fragment {
     // UI — Podsumowanie
     private TextView tvSummaryAmount;
     private TextView tvSummaryDetails;
-
-    // UI — Stawka
-    private TextInputEditText etHourlyRate;
-    private MaterialButton btnSaveRate;
-    private TextView tvSavedRate;
 
     // UI — Strata
     private TextInputEditText etLossAmount;
@@ -104,9 +95,6 @@ public class FinanceFragment extends Fragment {
         // --- Bind UI ---
         bindViews(view);
 
-        // --- Stawka godzinowa ---
-        setupHourlyRate();
-
         // --- Dodawanie strat ---
         setupLossInput();
         
@@ -127,10 +115,6 @@ public class FinanceFragment extends Fragment {
         tvSummaryAmount = view.findViewById(R.id.tv_summary_amount);
         tvSummaryDetails = view.findViewById(R.id.tv_summary_details);
 
-        etHourlyRate = view.findViewById(R.id.et_hourly_rate);
-        btnSaveRate = view.findViewById(R.id.btn_save_rate);
-        tvSavedRate = view.findViewById(R.id.tv_saved_rate);
-
         etLossAmount = view.findViewById(R.id.et_loss_amount);
         etLossDescription = view.findViewById(R.id.et_loss_description);
         btnAddLoss = view.findViewById(R.id.btn_add_loss);
@@ -141,55 +125,6 @@ public class FinanceFragment extends Fragment {
 
         rvLosses = view.findViewById(R.id.rv_losses);
         tvLossesEmpty = view.findViewById(R.id.tv_losses_empty);
-    }
-
-    // ─── Stawka godzinowa (SharedPreferences) ────────────────────────────
-
-    private SharedPreferences getPrefs() {
-        return requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-    }
-
-    private void setupHourlyRate() {
-        float savedRate = getPrefs().getFloat(PREF_HOURLY_RATE, 0f);
-
-        if (savedRate > 0) {
-            etHourlyRate.setText(String.valueOf(savedRate));
-            tvSavedRate.setText(String.format("Aktualna stawka: %.2f zł/h netto", savedRate));
-            tvSavedRate.setVisibility(View.VISIBLE);
-        }
-
-        // Przekazujemy stawkę do ViewModelu
-        viewModel.setHourlyRate(savedRate);
-
-        btnSaveRate.setOnClickListener(v -> {
-            String rateStr = etHourlyRate.getText() != null
-                    ? etHourlyRate.getText().toString().trim() : "";
-            if (rateStr.isEmpty()) {
-                etHourlyRate.setError("Wpisz stawkę");
-                return;
-            }
-
-            try {
-                float rate = Float.parseFloat(rateStr.replace(",", "."));
-                if (rate <= 0) {
-                    etHourlyRate.setError("Stawka musi być > 0");
-                    return;
-                }
-
-                // Zapisz do SharedPreferences
-                getPrefs().edit().putFloat(PREF_HOURLY_RATE, rate).apply();
-
-                // Przekaż do ViewModelu (wywoła przeliczenie)
-                viewModel.setHourlyRate(rate);
-
-                tvSavedRate.setText(String.format("Aktualna stawka: %.2f zł/h netto", rate));
-                tvSavedRate.setVisibility(View.VISIBLE);
-
-                Toast.makeText(requireContext(), "Stawka zapisana", Toast.LENGTH_SHORT).show();
-            } catch (NumberFormatException e) {
-                etHourlyRate.setError("Nieprawidłowy format liczby");
-            }
-        });
     }
 
     // ─── Dodawanie straty ────────────────────────────────────────────────
