@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.text.InputType;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -14,7 +13,6 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
@@ -31,7 +29,6 @@ import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
-import com.google.android.material.textfield.TextInputEditText;
 
 import java.util.Locale;
 
@@ -69,8 +66,6 @@ public class DashboardFragment extends Fragment {
     // Quick Actions
     private MaterialButton btnPayrollDetails;
     private MaterialButton btnSyncSchedule;
-    private MaterialButton btnSetGoal;
-    private MaterialButton btnSetNotification;
 
     @Nullable
     @Override
@@ -106,8 +101,6 @@ public class DashboardFragment extends Fragment {
 
         btnPayrollDetails = view.findViewById(R.id.btn_payroll_details);
         btnSyncSchedule = view.findViewById(R.id.btn_sync_schedule);
-        btnSetGoal = view.findViewById(R.id.btn_set_goal);
-        btnSetNotification = view.findViewById(R.id.btn_set_notification);
 
         // Load goal
         int savedGoal = getPrefs().getInt(PREF_MONTHLY_GOAL, 100);
@@ -214,53 +207,6 @@ public class DashboardFragment extends Fragment {
             bottomSheet.show(getParentFragmentManager(), "PayrollBottomSheet");
         });
 
-        btnSetGoal.setOnClickListener(v -> {
-            TextInputEditText input = new TextInputEditText(requireContext());
-            input.setInputType(InputType.TYPE_CLASS_NUMBER);
-            Integer currentGoal = viewModel.getMonthlyHoursGoal().getValue();
-            if (currentGoal != null) input.setText(String.valueOf(currentGoal));
-
-            new AlertDialog.Builder(requireContext())
-                    .setTitle("Ustaw Cel Godzinowy")
-                    .setView(input)
-                    .setPositiveButton("Zapisz", (dialog, which) -> {
-                        String val = input.getText() != null ? input.getText().toString().trim() : "";
-                        if (!val.isEmpty()) {
-                            try {
-                                int goal = Integer.parseInt(val);
-                                viewModel.getMonthlyHoursGoal().setValue(goal);
-                                getPrefs().edit().putInt(PREF_MONTHLY_GOAL, goal).apply();
-                                Toast.makeText(requireContext(), "Zapisano cel: " + goal + "h", Toast.LENGTH_SHORT).show();
-                            } catch (NumberFormatException ignored) {}
-                        }
-                    })
-                    .setNegativeButton("Anuluj", null)
-                    .show();
-        });
-
-        btnSetNotification.setOnClickListener(v -> {
-            TextInputEditText input = new TextInputEditText(requireContext());
-            input.setInputType(InputType.TYPE_CLASS_NUMBER);
-            int savedMinutes = getPrefs().getInt(PREF_NOTIFY_BEFORE, 60);
-            input.setText(String.valueOf(savedMinutes));
-
-            new AlertDialog.Builder(requireContext())
-                    .setTitle("Czas Powiadomienia")
-                    .setMessage("Ile minut przed zmianą przypomnieć?")
-                    .setView(input)
-                    .setPositiveButton("Zapisz", (dialog, which) -> {
-                        String val = input.getText() != null ? input.getText().toString().trim() : "";
-                        if (!val.isEmpty()) {
-                            try {
-                                int minutes = Integer.parseInt(val);
-                                getPrefs().edit().putInt(PREF_NOTIFY_BEFORE, minutes).apply();
-                                Toast.makeText(requireContext(), "Powiadomienia: " + minutes + " min", Toast.LENGTH_SHORT).show();
-                            } catch (NumberFormatException ignored) {}
-                        }
-                    })
-                    .setNegativeButton("Anuluj", null)
-                    .show();
-        });
     }
 
     // ─── Obserwatory (Widgety) ───────────────────────────────────────────

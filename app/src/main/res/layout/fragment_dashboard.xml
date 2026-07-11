@@ -103,46 +103,6 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp" />
 
-        <LinearLayout
-            android:id="@+id/layout_name_input"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:layout_marginBottom="24dp">
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Imię i Nazwisko (jak w Excelu)"
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/et_user_name"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textPersonName"
-                    android:maxLines="1" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_save_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Zapisz"
-                android:textAllCaps="false"
-                android:layout_marginTop="8dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tv_saved_name"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textSize="16sp"
-            android:textStyle="italic"
-            android:visibility="gone"
-            android:layout_marginBottom="16dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_payroll_details"
@@ -155,92 +115,18 @@
             app:iconGravity="textStart"
             android:layout_marginBottom="16dp" />
 
-        <GridLayout
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_sync_schedule"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:columnCount="2"
-            android:rowCount="2"
-            android:alignmentMode="alignMargins"
-            android:columnOrderPreserved="false"
-            android:useDefaultMargins="true">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_sync_schedule"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:minHeight="80dp"
-                android:layout_columnWeight="1"
-                android:layout_margin="4dp"
-                android:text="Synchronizuj"
-                android:textAllCaps="false"
-                android:gravity="center"
-                android:maxLines="2"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="10sp"
-                app:autoSizeMaxTextSize="14sp"
-                app:icon="@android:drawable/stat_notify_sync"
-                app:iconGravity="textStart"
-                app:cornerRadius="12dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_set_goal"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:minHeight="80dp"
-                android:layout_columnWeight="1"
-                android:layout_margin="4dp"
-                android:text="Cel Godzinowy"
-                android:textAllCaps="false"
-                android:gravity="center"
-                android:maxLines="2"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="10sp"
-                app:autoSizeMaxTextSize="14sp"
-                app:icon="@android:drawable/ic_menu_myplaces"
-                app:iconGravity="textStart"
-                app:cornerRadius="12dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_set_notification"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:minHeight="80dp"
-                android:layout_columnWeight="1"
-                android:layout_margin="4dp"
-                android:text="Czas Powiadomienia"
-                android:textAllCaps="false"
-                android:gravity="center"
-                android:maxLines="2"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="10sp"
-                app:autoSizeMaxTextSize="14sp"
-                app:icon="@android:drawable/ic_popup_reminder"
-                app:iconGravity="textStart"
-                app:cornerRadius="12dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_change_name_action"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:minHeight="80dp"
-                android:layout_columnWeight="1"
-                android:layout_margin="4dp"
-                android:text="Zmień Nazwisko"
-                android:textAllCaps="false"
-                android:gravity="center"
-                android:maxLines="2"
-                app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="10sp"
-                app:autoSizeMaxTextSize="14sp"
-                app:icon="@android:drawable/ic_menu_edit"
-                app:iconGravity="textStart"
-                app:cornerRadius="12dp"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
-        </GridLayout>
+            android:minHeight="56dp"
+            android:layout_marginTop="8dp"
+            android:text="Synchronizuj Grafik"
+            android:textAllCaps="false"
+            app:icon="@android:drawable/stat_notify_sync"
+            app:iconGravity="textStart"
+            app:cornerRadius="12dp"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
     </LinearLayout>
 

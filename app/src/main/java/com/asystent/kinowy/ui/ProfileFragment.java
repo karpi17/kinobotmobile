@@ -33,15 +33,19 @@ import com.google.android.material.textfield.TextInputEditText;
 public class ProfileFragment extends Fragment {
 
     // Klucze SharedPreferences — identyczne jak w DashboardFragment i FinanceFragment
-    private static final String PREFS_NAME       = "asystent_kinowy_prefs";
-    private static final String PREF_USER_NAME   = "user_name";
-    private static final String PREF_HOURLY_RATE = "hourly_rate";
+    private static final String PREFS_NAME         = "asystent_kinowy_prefs";
+    private static final String PREF_USER_NAME     = "user_name";
+    private static final String PREF_HOURLY_RATE   = "hourly_rate";
+    private static final String PREF_MONTHLY_GOAL  = "monthly_hours_goal";
+    private static final String PREF_NOTIFY_BEFORE = "notify_before_minutes";
 
     private MainViewModel viewModel;
 
     private TextInputEditText etName;
     private TextInputEditText etHourlyRate;
     private TextView          tvSavedRate;
+    private TextInputEditText etGoalHours;
+    private TextInputEditText etNotifyMinutes;
 
     @Nullable
     @Override
@@ -57,9 +61,11 @@ public class ProfileFragment extends Fragment {
 
         viewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
 
-        etName       = view.findViewById(R.id.et_profile_name);
-        etHourlyRate = view.findViewById(R.id.et_profile_hourly_rate);
-        tvSavedRate  = view.findViewById(R.id.tv_profile_saved_rate);
+        etName          = view.findViewById(R.id.et_profile_name);
+        etHourlyRate    = view.findViewById(R.id.et_profile_hourly_rate);
+        tvSavedRate     = view.findViewById(R.id.tv_profile_saved_rate);
+        etGoalHours     = view.findViewById(R.id.et_profile_goal_hours);
+        etNotifyMinutes = view.findViewById(R.id.et_profile_notify_minutes);
 
         // ── Wersja aplikacji ──────────────────────────────────────────────────
         TextView tvVersion = view.findViewById(R.id.tv_profile_version);
@@ -89,6 +95,17 @@ public class ProfileFragment extends Fragment {
 
         // ── Zapis imienia ─────────────────────────────────────────────────────
         view.findViewById(R.id.btn_save_name).setOnClickListener(v -> saveName(prefs));
+
+        // ── Cel godzinowy ─────────────────────────────────────────────────────
+        int savedGoal = prefs.getInt(PREF_MONTHLY_GOAL, 100);
+        etGoalHours.setText(String.valueOf(savedGoal));
+        viewModel.getMonthlyHoursGoal().setValue(savedGoal); // inicjalizuj Dashboard progress
+        view.findViewById(R.id.btn_profile_save_goal).setOnClickListener(v -> saveGoal(prefs));
+
+        // ── Czas powiadomienia ────────────────────────────────────────────────
+        int savedNotify = prefs.getInt(PREF_NOTIFY_BEFORE, 30);
+        etNotifyMinutes.setText(String.valueOf(savedNotify));
+        view.findViewById(R.id.btn_profile_save_notify).setOnClickListener(v -> saveNotify(prefs));
 
         // ── Zapis stawki ──────────────────────────────────────────────────────
         view.findViewById(R.id.btn_profile_save_rate).setOnClickListener(v -> saveRate(prefs));
@@ -125,6 +142,41 @@ public class ProfileFragment extends Fragment {
                     Toast.LENGTH_SHORT).show();
         } catch (NumberFormatException e) {
             Toast.makeText(requireContext(), "Nieprawidłowa stawka", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void saveGoal(SharedPreferences prefs) {
+        String s = etGoalHours.getText() != null ? etGoalHours.getText().toString().trim() : "";
+        if (TextUtils.isEmpty(s)) {
+            Toast.makeText(requireContext(), "Wpisz cel godzinowy", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            int goal = Integer.parseInt(s);
+            if (goal <= 0) throw new NumberFormatException();
+            prefs.edit().putInt(PREF_MONTHLY_GOAL, goal).apply();
+            viewModel.getMonthlyHoursGoal().setValue(goal);
+            Toast.makeText(requireContext(),
+                    "✅ Cel: " + goal + "h/miesiąc", Toast.LENGTH_SHORT).show();
+        } catch (NumberFormatException e) {
+            Toast.makeText(requireContext(), "Nieprawidłowa wartość", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void saveNotify(SharedPreferences prefs) {
+        String s = etNotifyMinutes.getText() != null ? etNotifyMinutes.getText().toString().trim() : "";
+        if (TextUtils.isEmpty(s)) {
+            Toast.makeText(requireContext(), "Wpisz liczbę minut", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            int minutes = Integer.parseInt(s);
+            if (minutes < 0) throw new NumberFormatException();
+            prefs.edit().putInt(PREF_NOTIFY_BEFORE, minutes).apply();
+            Toast.makeText(requireContext(),
+                    "✅ Budzik: " + minutes + " min przed zmianą", Toast.LENGTH_SHORT).show();
+        } catch (NumberFormatException e) {
+            Toast.makeText(requireContext(), "Nieprawidłowa wartość", Toast.LENGTH_SHORT).show();
         }
     }
 
