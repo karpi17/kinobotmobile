@@ -17,6 +17,8 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.asystent.kinowy.R;
 import com.asystent.kinowy.viewmodel.MainViewModel;
+import com.asystent.kinowy.widget.ShiftStackWidgetProvider;
+import com.asystent.kinowy.widget.ShiftWidgetProvider;
 import com.google.android.material.textfield.TextInputEditText;
 
 /**
@@ -120,7 +122,10 @@ public class ProfileFragment extends Fragment {
             return;
         }
         prefs.edit().putString(PREF_USER_NAME, name).apply();
-        viewModel.setTargetUserName(name); // P0 fix: natychmiastowa synchronizacja z ViewModel
+        viewModel.setTargetUserName(name); // natychmiastowa synchronizacja z ViewModel
+        // Odśwież oba widgety — które czytają imię z SharedPrefs do filtrowania ekipy
+        ShiftWidgetProvider.triggerUpdate(requireContext());
+        ShiftStackWidgetProvider.triggerUpdate(requireContext());
         Toast.makeText(requireContext(), "✅ Imię zapisane: " + name, Toast.LENGTH_SHORT).show();
     }
 
