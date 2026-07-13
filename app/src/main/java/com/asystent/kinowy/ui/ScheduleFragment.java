@@ -193,19 +193,37 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             List<GlobalShift> overlapping = com.asystent.kinowy.utils.ShiftUtils
                     .getOverlappingShifts(myStart, myEnd, dailyShifts);
 
+            // Odfiltruj własne imię — tak samo jak widget (czytamy z SharedPrefs)
+            String myName = requireContext()
+                    .getSharedPreferences("asystent_kinowy_prefs",
+                            android.content.Context.MODE_PRIVATE)
+                    .getString("user_name", "").trim();
+            if (!myName.isEmpty() && overlapping != null) {
+                List<GlobalShift> filtered = new ArrayList<>();
+                for (GlobalShift gs : overlapping) {
+                    if (!myName.equalsIgnoreCase(
+                            gs.getName() != null ? gs.getName().trim() : "")) {
+                        filtered.add(gs);
+                    }
+                }
+                overlapping = filtered;
+            }
+
             // Aktualizuj UI na main thread
+            final List<GlobalShift> finalList = overlapping;
             if (isAdded() && getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
-                    if (overlapping == null || overlapping.isEmpty()) {
+                    if (finalList == null || finalList.isEmpty()) {
                         sectionLayout.setVisibility(View.GONE);
                     } else {
                         sectionLayout.setVisibility(View.VISIBLE);
-                        coworkerAdapter.setData(overlapping);
+                        coworkerAdapter.setData(finalList);
                     }
                 });
             }
         });
     }
+
 
     /**
      * Pokazuje dialog edycji godzin współpracownika.
