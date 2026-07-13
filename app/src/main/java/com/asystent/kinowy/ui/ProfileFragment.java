@@ -120,6 +120,7 @@ public class ProfileFragment extends Fragment {
             return;
         }
         prefs.edit().putString(PREF_USER_NAME, name).apply();
+        viewModel.setTargetUserName(name); // P0 fix: natychmiastowa synchronizacja z ViewModel
         Toast.makeText(requireContext(), "✅ Imię zapisane: " + name, Toast.LENGTH_SHORT).show();
     }
 

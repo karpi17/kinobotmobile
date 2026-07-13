@@ -129,6 +129,21 @@ public class MainActivity extends AppCompatActivity
                         new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
             }
         }
+
+        // ─── Deep-link przy zimnym starcie (widget kliknięty gdy apka była zamknięta) ──
+        // P1 fix: obsługa nie tylko w onNewIntent (singleTop), ale też w onCreate
+        String coldStartDate = getIntent().getStringExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
+        int coldStartId = getIntent().getIntExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_ID, -1);
+        if (coldStartDate != null && !coldStartDate.isEmpty()) {
+            // Czekamy aż ViewModell załaduje dane z Room, potem otwieramy dialog
+            viewModel.getAllShifts().observe(this, shifts -> {
+                if (shifts != null && !shifts.isEmpty()) {
+                    openShiftByIdOrDate(coldStartId, coldStartDate);
+                    // Obsłużyliśmy raz — wyczyść Intent żeby nie otwieral się po rotacji
+                    getIntent().removeExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
+                }
+            });
+        }
     }
 
     // ─── NavigationView.OnNavigationItemSelectedListener ────────────────────────
@@ -249,20 +264,35 @@ public class MainActivity extends AppCompatActivity
         super.onNewIntent(intent);
         setIntent(intent);
         String shiftDate = intent.getStringExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
+        int shiftId = intent.getIntExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_ID, -1);
         if (shiftDate != null && !shiftDate.isEmpty()) {
-            openShiftByDate(shiftDate);
+            openShiftByIdOrDate(shiftId, shiftDate);
         }
     }
 
-    private void openShiftByDate(String date) {
+    /**
+     * P1 fix: Otwiera dialog zmiany, preferując lookup po ID (precyzyjny),
+     * z fallbackiem na pierwsze dopasowanie po dacie.
+     */
+    private void openShiftByIdOrDate(int shiftId, String date) {
         // Przełącz na Grafik przez drawer
         showFragment(scheduleFragment);
         navigationView.setCheckedItem(R.id.nav_schedule);
 
-        // Otwórz dialog po wyrenderowaniu fragmentu
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             List<Shift> shifts = viewModel.getAllShifts().getValue();
             if (shifts == null) return;
+
+            // Próba 1: szukaj po unikalnym ID bazy danych
+            if (shiftId != -1) {
+                for (Shift shift : shifts) {
+                    if (shift.getId() == shiftId) {
+                        scheduleFragment.openShiftDialog(shift);
+                        return;
+                    }
+                }
+            }
+            // Próba 2 (fallback): pierwsze dopasowanie po dacie
             for (Shift shift : shifts) {
                 if (date.equals(shift.getDate()) && !shift.isReplacement()) {
                     scheduleFragment.openShiftDialog(shift);

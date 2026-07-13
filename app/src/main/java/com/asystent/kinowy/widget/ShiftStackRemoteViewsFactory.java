@@ -147,6 +147,7 @@ class ShiftStackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFact
         // Fill-in Intent — po kliknięciu w kartę otwiera konkretną zmianę w apce
         Intent fillIn = new Intent();
         fillIn.putExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE, shift.getDate());
+        fillIn.putExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_ID, shift.getId()); // P1 fix: precyzyjne ID
         rv.setOnClickFillInIntent(R.id.widget_stack_item_root, fillIn);
 
         return rv;
@@ -161,7 +162,14 @@ class ShiftStackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFact
     public int getViewTypeCount() { return 1; }
 
     @Override
-    public long getItemId(int position) { return position; }
+    public long getItemId(int position) {
+        if (position < 0 || position >= items.size()) return position;
+        Shift s = items.get(position);
+        // P1 fix: stabilne ID oparte o datę+godzinę, nie pozycję na liście
+        String key = (s.getDate() != null ? s.getDate() : "") + "|"
+                   + (s.getStartTime() != null ? s.getStartTime() : "");
+        return key.hashCode();
+    }
 
     @Override
     public boolean hasStableIds() { return true; }

@@ -42,6 +42,8 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
     public static final String ACTION_REFRESH = "com.asystent.kinowy.WIDGET_REFRESH";
     /** Klucz Intent extra do deep-linku konkretnej zmiany z widgetu stack. */
     public static final String EXTRA_OPEN_SHIFT_DATE = "open_shift_date";
+    /** P1 fix: dodatkowy klucz do precyzyjnej identyfikacji zmiany po ID bazy danych. */
+    public static final String EXTRA_OPEN_SHIFT_ID   = "open_shift_id";
 
     private static final String PREFS_NAME = "asystent_kinowy_prefs";
     private static final String PREF_USER_NAME = "user_name";
@@ -184,7 +186,7 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
                 LocalDateTime shiftStart = LocalDateTime.of(date, startTime);
 
                 // Oblicz koniec (uwzględnij zamki przechodzące przez północ)
-                LocalDateTime shiftEnd = buildShiftEnd(date, shift.getEndTime(), shift.isClosingShift());
+                LocalDateTime shiftEnd = buildShiftEnd(date, shift.getStartTime(), shift.getEndTime(), shift.isClosingShift());
 
                 if (now.isAfter(shiftStart) && now.isBefore(shiftEnd)) {
                     // Trwa teraz — priorytet
@@ -212,7 +214,7 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
             LocalDate date = LocalDate.parse(shift.getDate());
             LocalTime startTime = LocalTime.parse(shift.getStartTime(), TIME_FMT);
             LocalDateTime shiftStart = LocalDateTime.of(date, startTime);
-            LocalDateTime shiftEnd = buildShiftEnd(date, shift.getEndTime(), shift.isClosingShift());
+            LocalDateTime shiftEnd = buildShiftEnd(date, shift.getStartTime(), shift.getEndTime(), shift.isClosingShift());
             LocalDateTime now = LocalDateTime.now();
 
             if (now.isAfter(shiftStart) && now.isBefore(shiftEnd)) {
@@ -246,15 +248,28 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
 
     /**
      * Oblicza LocalDateTime końca zmiany z uwzględnieniem zamków (koniec po północy = +1 dzień).
+     * <p>
+     * P1 fix: Jeśli endTime < startTime (np. 22:00–02:00), zmiana przez północ jest wykrywana
+     * automatycznie — niezależnie od flagi isClosingShift.
      */
-    private LocalDateTime buildShiftEnd(LocalDate date, String endTimeStr, boolean isClosing) {
+    private LocalDateTime buildShiftEnd(LocalDate date, String startTimeStr,
+                                        String endTimeStr, boolean isClosing) {
         if (endTimeStr == null || endTimeStr.isEmpty()) {
             return LocalDateTime.of(date, LocalTime.MAX);
         }
         LocalTime endTime = LocalTime.parse(endTimeStr, TIME_FMT);
-        // Zamek: koniec przed 05:00 → następny dzień
+        // Warunek 1: flaga + koniec przed 05:00 (klasyczny zamek)
         if (isClosing && endTime.isBefore(LocalTime.of(5, 0))) {
             return LocalDateTime.of(date.plusDays(1), endTime);
+        }
+        // Warunek 2 (P1): endTime < startTime — zmiana przez północ bez flagi
+        if (startTimeStr != null && !startTimeStr.isEmpty()) {
+            try {
+                LocalTime startTime = LocalTime.parse(startTimeStr, TIME_FMT);
+                if (endTime.isBefore(startTime)) {
+                    return LocalDateTime.of(date.plusDays(1), endTime);
+                }
+            } catch (Exception ignored) {}
         }
         return LocalDateTime.of(date, endTime);
     }
