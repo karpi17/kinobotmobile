@@ -1009,15 +1009,22 @@ public class MainViewModel extends AndroidViewModel {
                 long startMillis = startDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
                 long endMillis = endDateTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
 
+                String eventTitle = "[Kino] " + (shift.getDescription() != null ? shift.getDescription() : "Zmiana");
+
                 android.content.ContentValues values = new android.content.ContentValues();
                 values.put(android.provider.CalendarContract.Events.DTSTART, startMillis);
                 values.put(android.provider.CalendarContract.Events.DTEND, endMillis);
-                values.put(android.provider.CalendarContract.Events.TITLE, "[Kino] " + (shift.getDescription() != null ? shift.getDescription() : "Zmiana"));
+                values.put(android.provider.CalendarContract.Events.TITLE, eventTitle);
                 values.put(android.provider.CalendarContract.Events.CALENDAR_ID, primaryCalendarId);
                 values.put(android.provider.CalendarContract.Events.EVENT_TIMEZONE, timeZone.getID());
 
                 if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    cr.insert(android.provider.CalendarContract.Events.CONTENT_URI, values);
+                    // Sprawdź czy wydarzenie już istnieje — zapobiega duplikatom przy wielokrotnym eksporcie
+                    if (!calendarEventExists(cr, primaryCalendarId, startMillis, eventTitle)) {
+                        cr.insert(android.provider.CalendarContract.Events.CONTENT_URI, values);
+                    } else {
+                        Log.d(TAG, "Pomijam duplikat w kalendarzu: " + eventTitle + " @ " + shift.getDate());
+                    }
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Błąd eksportu zmiany do kalendarza", e);
@@ -1050,6 +1057,37 @@ public class MainViewModel extends AndroidViewModel {
         return 1L; // fallback
     }
 
+    /**
+     * Sprawdza czy w kalendarzu istnieje już wydarzenie o tej samej dacie startu i tytule.
+     * Używane do zapobiegania duplikatom przy wielokrotnym eksporcie tego samego grafiku.
+     *
+     * @param cr            ContentResolver
+     * @param calendarId    ID kalendarza
+     * @param dtStartMillis czas startu w ms (epoch)
+     * @param title         tytuł wydarzenia
+     * @return true jeśli wydarzenie już istnieje
+     */
+    private boolean calendarEventExists(android.content.ContentResolver cr,
+                                        long calendarId, long dtStartMillis, String title) {
+        String[] projection = {android.provider.CalendarContract.Events._ID};
+        String selection = android.provider.CalendarContract.Events.CALENDAR_ID + " = ? AND "
+                + android.provider.CalendarContract.Events.DTSTART + " = ? AND "
+                + android.provider.CalendarContract.Events.TITLE + " = ? AND "
+                + android.provider.CalendarContract.Events.DELETED + " = 0";
+        String[] selectionArgs = {
+                String.valueOf(calendarId),
+                String.valueOf(dtStartMillis),
+                title
+        };
+        try (android.database.Cursor cursor = cr.query(
+                android.provider.CalendarContract.Events.CONTENT_URI,
+                projection, selection, selectionArgs, null)) {
+            return cursor != null && cursor.getCount() > 0;
+        } catch (Exception e) {
+            Log.w(TAG, "Błąd sprawdzania duplikatu kalendarza — wstawiam na wszelki wypadek", e);
+            return false; // bezpieczniejsze niż pominięcie
+        }
+    }
 
     // ─── Cykl życia ViewModel ─────────────────────────────────────────────
 
