@@ -31,7 +31,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 @Database(
     entities = {Shift.class, Loss.class, Tip.class, MonthlyReport.class, ActiveEmployee.class, GlobalShift.class},
     version = 12,
-    exportSchema = false
+    exportSchema = true
 )
 public abstract class AppDatabase extends RoomDatabase {
 
@@ -263,9 +263,9 @@ public abstract class AppDatabase extends RoomDatabase {
                         MIGRATION_10_11, // v10 → v11 (soft delete)
                         MIGRATION_11_12  // v11 → v12 (alarm budzik)
                     )
-                    // Ostatnia linia obrony dla instalacji starszych niż v3
-                    // lub luki v4→v5. Przy destructive dane są kasowane.
-                    .fallbackToDestructiveMigration()
+                    // Fallback: kasuje dane TYLKO dla bardzo starych wersji (v1-v4)
+                    // bez zdefiniowanych migracji. Od v5 wzwyż — wszystko jest pokryte.
+                    .fallbackToDestructiveMigrationFrom(1, 2, 3, 4)
                     .build();
                 }
             }

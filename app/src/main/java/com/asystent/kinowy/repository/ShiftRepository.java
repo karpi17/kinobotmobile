@@ -7,7 +7,7 @@ import androidx.lifecycle.LiveData;
 import com.asystent.kinowy.db.AppDatabase;
 import com.asystent.kinowy.db.ShiftDao;
 import com.asystent.kinowy.models.Shift;
-import com.asystent.kinowy.notifications.AlarmScheduler;
+import com.asystent.kinowy.notifications.NotificationScheduler;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -110,7 +110,7 @@ public class ShiftRepository {
     public void update(Shift shift) {
         executor.execute(() -> {
             shiftDao.update(shift);
-            AlarmScheduler.rescheduleForShift(application, shift);
+            NotificationScheduler.rescheduleForShift(application, shift);
         });
     }
 
@@ -119,7 +119,7 @@ public class ShiftRepository {
      */
     public void delete(Shift shift) {
         executor.execute(() -> {
-            AlarmScheduler.cancelAlarmsForShift(application, shift);
+            NotificationScheduler.cancelAlarmsForShift(application, shift);
             shiftDao.delete(shift);
         });
     }

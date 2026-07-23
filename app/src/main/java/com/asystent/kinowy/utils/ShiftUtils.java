@@ -53,7 +53,7 @@ public final class ShiftUtils {
         try {
             int myS = toMinutes(myStart);
             int myE = toMinutes(myEnd);
-            if (myE <= myS) myE += 24 * 60; // zmiana nocna
+            if (myE <= myS) myE += 24 * 60; // zmiana nocna użytkownika
 
             for (GlobalShift gs : dailyShifts) {
                 if (gs.getStartTime() == null || gs.getStartTime().isEmpty()) continue;
@@ -61,11 +61,23 @@ public final class ShiftUtils {
 
                 int gsS = toMinutes(gs.getStartTime());
                 int gsE = toMinutes(gs.getEndTime());
-                if (gsE <= gsS) gsE += 24 * 60;
+                if (gsE <= gsS) gsE += 24 * 60; // nocka współpracownika
 
-                // Dwa przedziały nakładają się, gdy: s1 < e2 AND s2 < e1
+                // Standardowe porównanie: s1 < e2 AND s2 < e1
                 if (myS < gsE && gsS < myE) {
                     result.add(gs);
+                    continue;
+                }
+
+                // Fix: wczesno-poranne zmiany (01:00-05:00) zapisane w bazie jako ten sam dzień
+                // co nocka poprzedniego dnia (22:00-02:00). Przesuwamy taki rekord o +24h
+                // i sprawdzamy nakładanie ponownie.
+                if (gsS < 6 * 60) { // zmiana zaczyna się przed 06:00
+                    int gsSShifted = gsS + 24 * 60;
+                    int gsEShifted = gsE + 24 * 60;
+                    if (myS < gsEShifted && gsSShifted < myE) {
+                        result.add(gs);
+                    }
                 }
             }
         } catch (Exception ignored) {
@@ -135,7 +147,7 @@ public final class ShiftUtils {
     /**
      * Konwertuje czas (HH:mm) na liczbę minut od północy.
      */
-    static int toMinutes(String time) {
+    public static int toMinutes(String time) {
         LocalTime lt = LocalTime.parse(time, TIME_FMT);
         return lt.getHour() * 60 + lt.getMinute();
     }

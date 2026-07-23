@@ -54,6 +54,8 @@ import retrofit2.Response;
 public class MainViewModel extends AndroidViewModel {
 
     private static final String TAG = "MainViewModel";
+    /** Limit maili do przeskanowania podczas synchronizacji grafiku. */
+    private static final int MAX_EMAILS_TO_SCAN = 15;
 
     // ─── Repozytoria ─────────────────────────────────────────────────────
 
@@ -304,6 +306,21 @@ public class MainViewModel extends AndroidViewModel {
                 List<GlobalShift> dailyShifts = globalShiftDao.getShiftsByDate(shift.getDate());
                 List<GlobalShift> overlapping = com.asystent.kinowy.utils.ShiftUtils
                         .getOverlappingShifts(shift.getStartTime(), shift.getEndTime(), dailyShifts);
+
+                // Odfiltruj własne imię z listy współpracowników
+                android.content.SharedPreferences prefs = getApplication()
+                        .getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE);
+                String myName = prefs.getString("user_name", "").trim();
+                if (!myName.isEmpty() && overlapping != null && !overlapping.isEmpty()) {
+                    List<GlobalShift> filtered = new java.util.ArrayList<>();
+                    for (GlobalShift gs : overlapping) {
+                        if (!myName.equalsIgnoreCase(gs.getName() != null ? gs.getName().trim() : "")) {
+                            filtered.add(gs);
+                        }
+                    }
+                    overlapping = filtered;
+                }
+
                 String formatted = com.asystent.kinowy.utils.ShiftUtils
                         .formatOverlappingShifts(overlapping);
                 nextShiftCoworkers.postValue(formatted);
@@ -794,7 +811,7 @@ public class MainViewModel extends AndroidViewModel {
 
                 // Zaczynamy asynchroniczne pobieranie do 5 ostatnich załączników
                 List<Shift> allParsedShifts = new ArrayList<>();
-                fetchMultipleAttachments(messages, 0, 15, allParsedShifts);
+                fetchMultipleAttachments(messages, 0, MAX_EMAILS_TO_SCAN, allParsedShifts);
             }
 
             @Override
@@ -970,8 +987,10 @@ public class MainViewModel extends AndroidViewModel {
         android.content.ContentResolver cr = context.getContentResolver();
         java.util.TimeZone timeZone = java.util.TimeZone.getDefault();
 
+        // Znajdź ID głównego kalendarza dynamicznie — nie zakładaj że to zawsze 1
+        long primaryCalendarId = getPrimaryCalendarId(cr);
+
         for (Shift shift : shifts) {
-            // Walidacja danych i pomijanie zmian, które oddajesz (zastępstwa)
             if (shift.getDate() == null || shift.getStartTime() == null || shift.getEndTime() == null) continue;
             if (shift.isReplacement()) continue;
 
@@ -983,7 +1002,6 @@ public class MainViewModel extends AndroidViewModel {
                 java.time.LocalDateTime startDateTime = java.time.LocalDateTime.of(date, startTime);
                 java.time.LocalDateTime endDateTime = java.time.LocalDateTime.of(date, endTime);
 
-                // Tip: Obsługa "nocek" w kinie (jeśli koniec jest przed startem, znaczy że zmiana kończy się jutro)
                 if (endTime.isBefore(startTime)) {
                     endDateTime = endDateTime.plusDays(1);
                 }
@@ -995,7 +1013,7 @@ public class MainViewModel extends AndroidViewModel {
                 values.put(android.provider.CalendarContract.Events.DTSTART, startMillis);
                 values.put(android.provider.CalendarContract.Events.DTEND, endMillis);
                 values.put(android.provider.CalendarContract.Events.TITLE, "[Kino] " + (shift.getDescription() != null ? shift.getDescription() : "Zmiana"));
-                values.put(android.provider.CalendarContract.Events.CALENDAR_ID, 1); // Zazwyczaj 1 to główny kalendarz urządzenia
+                values.put(android.provider.CalendarContract.Events.CALENDAR_ID, primaryCalendarId);
                 values.put(android.provider.CalendarContract.Events.EVENT_TIMEZONE, timeZone.getID());
 
                 if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -1006,6 +1024,32 @@ public class MainViewModel extends AndroidViewModel {
             }
         }
     }
+
+    /**
+     * Zwraca ID głównego kalendarza Google (lub pierwszego dostępnego).
+     * Fallback: 1 (domyślne ID na wi\u0119kszości urządzeń).
+     */
+    private long getPrimaryCalendarId(android.content.ContentResolver cr) {
+        String[] projection = {
+                android.provider.CalendarContract.Calendars._ID,
+                android.provider.CalendarContract.Calendars.IS_PRIMARY,
+                android.provider.CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
+        };
+        String selection = android.provider.CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
+                + " = " + android.provider.CalendarContract.Calendars.CAL_ACCESS_OWNER;
+        try (android.database.Cursor cursor = cr.query(
+                android.provider.CalendarContract.Calendars.CONTENT_URI,
+                projection, selection, null,
+                android.provider.CalendarContract.Calendars.IS_PRIMARY + " DESC")) {
+            if (cursor != null && cursor.moveToFirst()) {
+                return cursor.getLong(cursor.getColumnIndexOrThrow(android.provider.CalendarContract.Calendars._ID));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Nie mo\u017cna znale\u017a\u0107 g\u0142\u00f3wnego kalendarza, u\u017cywam ID=1", e);
+        }
+        return 1L; // fallback
+    }
+
 
     // ─── Cykl życia ViewModel ─────────────────────────────────────────────
 

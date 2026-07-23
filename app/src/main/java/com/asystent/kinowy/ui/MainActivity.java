@@ -22,7 +22,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.asystent.kinowy.R;
 import com.asystent.kinowy.models.Shift;
-import com.asystent.kinowy.notifications.AlarmScheduler;
+import com.asystent.kinowy.notifications.NotificationScheduler;
 import com.asystent.kinowy.viewmodel.MainViewModel;
 import com.asystent.kinowy.widget.ShiftWidgetProvider;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
@@ -117,7 +117,7 @@ public class MainActivity extends AppCompatActivity
         // ─── Alarms — obserwuj zmiany i przelicz alarmy ─────────────────────────
         viewModel.getAllShifts().observe(this, shifts -> {
             if (shifts != null) {
-                AlarmScheduler.scheduleAlarms(this, shifts);
+                NotificationScheduler.scheduleAlarms(this, shifts);
             }
         });
 

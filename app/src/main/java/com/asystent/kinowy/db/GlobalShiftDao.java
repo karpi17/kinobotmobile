@@ -134,14 +134,20 @@ public interface GlobalShiftDao {
      */
     default void insertAllSafe(List<GlobalShift> shifts) {
         if (shifts == null || shifts.isEmpty()) return;
+
+        // Zbieramy bezpieczne rekordy do wstawienia — jedna transakcja zamiast N
+        List<GlobalShift> safeToInsert = new java.util.ArrayList<>();
         for (GlobalShift gs : shifts) {
-            // Sprawdź czy istnieje ręczna edycja dla tego pracownika w tym dniu
+            // Pomiń jeśli istnieje ręczna edycja lub soft-delete dla tego pracownika w tym dniu
             int manualCount = countManuallyEditedByNameAndDate(gs.getName(), gs.getDate());
             if (manualCount == 0) {
-                // Brak ręcznej edycji — bezpiecznie wstaw (IGNORE duplikaty)
-                insertAll(java.util.Collections.singletonList(gs));
+                safeToInsert.add(gs);
             }
-            // Jeśli manualCount > 0 — pomijamy, ręczna edycja ma priorytet
+        }
+
+        // Wstaw wszystkie bezpieczne rekordy jednym wywołaniem (batch insert)
+        if (!safeToInsert.isEmpty()) {
+            insertAll(safeToInsert);
         }
     }
 }
