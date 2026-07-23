@@ -282,9 +282,8 @@ public abstract class AppDatabase extends RoomDatabase {
                         MIGRATION_11_12, // v11 → v12 (alarm budzik)
                         MIGRATION_12_13  // v12 → v13 (historia importu)
                     )
-                    // Fallback: kasuje dane TYLKO dla starych wersji bez zdefiniowanych migracji (v1, v2, v4).
-                    // Wersja v3 posiada MIGRATION_3_4. Od v5 wzwyż — wszystko jest pokryte migracjami.
-                    .fallbackToDestructiveMigrationFrom(1, 2, 4)
+                    // Fallback w razie braku ciągu migracji
+                    .fallbackToDestructiveMigration()
                     .build();
                 }
             }
