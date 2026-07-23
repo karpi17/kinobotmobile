@@ -16,21 +16,23 @@ import com.asystent.kinowy.models.Tip;
 import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
+import com.asystent.kinowy.models.ScheduleImportLog;
+
 /**
  * Główna baza danych Room dla aplikacji Asystent Kinowy.
  * Singleton — dostęp przez {@link #getInstance(Context)}.
  *
  * Historia wersji:
  *  v3 → v4 : dodano kolumnę `category` w shifts + tabela monthly_reports
- *  v5 → v6 : (brak oficjalnej migracji — destructive fallback)
  *  v5 → v6 : dodano kolumnę `is_replacement` w shifts
  *  v6 → v7 : dodano kolumny `is_closing_shift` i `closing_crew` w shifts
  *  v7 → v8 : dodano tabelę `active_employees` (słownik pracowników)
  *  v8 → v9 : dodano tabelę `global_shifts` (globalny grafik ekipy)
+ *  v12 → v13: dodano tabelę `import_log` (historia importów grafików)
  */
 @Database(
-    entities = {Shift.class, Loss.class, Tip.class, MonthlyReport.class, ActiveEmployee.class, GlobalShift.class},
-    version = 12,
+    entities = {Shift.class, Loss.class, Tip.class, MonthlyReport.class, ActiveEmployee.class, GlobalShift.class, ScheduleImportLog.class},
+    version = 13,
     exportSchema = true
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -53,6 +55,8 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract EmployeeDao employeeDao();
 
     public abstract GlobalShiftDao globalShiftDao();
+
+    public abstract ImportLogDao importLogDao();
 
     // -------------------------------------------------------------------------
     // Migracje
@@ -240,6 +244,20 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    public static final Migration MIGRATION_12_13 = new Migration(12, 13) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE IF NOT EXISTS `import_log` (" +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`source_type` TEXT, " +
+                    "`source_file` TEXT, " +
+                    "`imported_at` TEXT, " +
+                    "`shifts_added` INTEGER NOT NULL, " +
+                    "`shifts_skipped` INTEGER NOT NULL, " +
+                    "`confidence` REAL NOT NULL)");
+        }
+    };
+
     // -------------------------------------------------------------------------
     // Singleton
     // -------------------------------------------------------------------------
@@ -261,7 +279,8 @@ public abstract class AppDatabase extends RoomDatabase {
                         MIGRATION_8_9,   // v8 → v9 (globalny grafik ekipy)
                         MIGRATION_9_10,  // v9 → v10 (manual override flag)
                         MIGRATION_10_11, // v10 → v11 (soft delete)
-                        MIGRATION_11_12  // v11 → v12 (alarm budzik)
+                        MIGRATION_11_12, // v11 → v12 (alarm budzik)
+                        MIGRATION_12_13  // v12 → v13 (historia importu)
                     )
                     // Fallback: kasuje dane TYLKO dla bardzo starych wersji (v1-v4)
                     // bez zdefiniowanych migracji. Od v5 wzwyż — wszystko jest pokryte.

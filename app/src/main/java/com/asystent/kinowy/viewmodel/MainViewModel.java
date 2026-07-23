@@ -13,6 +13,7 @@ import androidx.lifecycle.MutableLiveData;
 import com.asystent.kinowy.models.Loss;
 import com.asystent.kinowy.models.ActiveEmployee;
 import com.asystent.kinowy.models.GlobalShift;
+import com.asystent.kinowy.models.ScheduleImportLog;
 import com.asystent.kinowy.models.Shift;
 import com.asystent.kinowy.models.Tip;
 import com.asystent.kinowy.network.ExcelParsingService;
@@ -69,10 +70,12 @@ public class MainViewModel extends AndroidViewModel {
     private final ExcelParsingService excelParsingService;
     private final com.asystent.kinowy.db.EmployeeDao employeeDao;
     private final com.asystent.kinowy.db.GlobalShiftDao globalShiftDao;
+    private final com.asystent.kinowy.db.ImportLogDao importLogDao;
     private final ExecutorService executor;
 
     // ─── LiveData ────────────────────────────────────────────────────────
 
+    private final MutableLiveData<com.asystent.kinowy.parsers.ScheduleParseResult> pendingImport;
     private final LiveData<List<Shift>> allShifts;
     private final MediatorLiveData<List<Shift>> monthlyShifts;
     private final MediatorLiveData<Shift> nextShift;
@@ -119,8 +122,10 @@ public class MainViewModel extends AndroidViewModel {
         excelParsingService = new ExcelParsingService();
         employeeDao = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).employeeDao();
         globalShiftDao = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).globalShiftDao();
+        importLogDao = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).importLogDao();
         executor = Executors.newSingleThreadExecutor();
 
+        pendingImport = new MutableLiveData<>();
         allShifts = shiftRepository.getAllShifts();
         monthlyShifts = new MediatorLiveData<>();
         nextShift = new MediatorLiveData<>();
@@ -748,6 +753,89 @@ public class MainViewModel extends AndroidViewModel {
      */
     public LiveData<String> getNextShiftCoworkers() {
         return nextShiftCoworkers;
+    }
+
+    // ─── Import & Abstrakt Parserów ──────────────────────────────────────
+
+    public LiveData<com.asystent.kinowy.parsers.ScheduleParseResult> getPendingImport() {
+        return pendingImport;
+    }
+
+    public void setPendingImport(com.asystent.kinowy.parsers.ScheduleParseResult result) {
+        pendingImport.setValue(result);
+    }
+
+    public void clearPendingImport() {
+        pendingImport.setValue(null);
+    }
+
+    /**
+     * Zatwierdza i zapisuje wynik parsowania ze skanera/parsera w bazie danych.
+     *
+     * @param parseResult wynik parsowania (Excel, PDF, OCR)
+     * @param safeMode    true = dodaje/aktualizuje zmiany chroniąc ręczne wpisy
+     */
+    public void commitImport(com.asystent.kinowy.parsers.ScheduleParseResult parseResult, boolean safeMode) {
+        if (parseResult == null) return;
+        executor.execute(() -> {
+            try {
+                // 1. Zapis zmian ekipy
+                List<GlobalShift> globalShifts = parseResult.getAllGlobalShifts();
+                if (globalShifts != null && !globalShifts.isEmpty()) {
+                    globalShiftDao.insertAllSafe(globalShifts);
+                    Log.d(TAG, "Zapisano globalne zmiany (safe): " + globalShifts.size());
+                }
+
+                // 2. Słownik pracowników
+                List<String> names = parseResult.getFoundNames();
+                if (names != null) {
+                    for (String name : names) {
+                        employeeDao.insertOrIgnore(new ActiveEmployee(name));
+                    }
+                }
+
+                // 3. Zmiany użytkownika
+                List<Shift> userShifts = parseResult.getTargetUserShifts();
+                int addedCount = 0;
+                int skippedCount = 0;
+
+                if (userShifts != null && !userShifts.isEmpty()) {
+                    if (safeMode) {
+                        for (Shift s : userShifts) {
+                            shiftRepository.insert(s);
+                            addedCount++;
+                        }
+                    } else {
+                        processAndMergeAllShifts(userShifts);
+                        addedCount = userShifts.size();
+                    }
+                }
+
+                // 4. Logowanie w tabeli import_log
+                String timestamp = java.time.LocalDateTime.now()
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                ScheduleImportLog logEntry = new ScheduleImportLog(
+                        parseResult.getSourceDescription(),
+                        parseResult.getSourceDescription(),
+                        timestamp,
+                        addedCount,
+                        skippedCount,
+                        parseResult.getConfidence()
+                );
+                importLogDao.insert(logEntry);
+
+                // 5. Odświeżenie widgetów
+                com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+                com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(getApplication());
+
+                syncStatus.postValue("Import zakończony pomyślnie (" + addedCount + " zmian)");
+                pendingImport.postValue(null);
+
+            } catch (Exception e) {
+                Log.e(TAG, "Błąd zapisywania Wyniku Importu", e);
+                syncStatus.postValue("error:Błąd zapisu importu: " + e.getMessage());
+            }
+        });
     }
 
     public MutableLiveData<Integer> getMonthlyHoursGoal() {

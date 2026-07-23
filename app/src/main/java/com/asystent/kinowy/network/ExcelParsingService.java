@@ -40,7 +40,16 @@ import java.util.Map;
  *   <li>Dla każdego dnia: kol[base]=typ zmiany, kol[base+1]=start, kol[base+2]=koniec</li>
  * </ul>
  */
-public class ExcelParsingService {
+import com.asystent.kinowy.parsers.ParserWarning;
+import com.asystent.kinowy.parsers.ScheduleParseOptions;
+import com.asystent.kinowy.parsers.ScheduleParseResult;
+import com.asystent.kinowy.parsers.ScheduleParser;
+
+/**
+ * Serwis parsujący pliki .xlsx z grafikami pracy kina.
+ * Implementuje uniwersalny interfejs {@link ScheduleParser}.
+ */
+public class ExcelParsingService implements ScheduleParser {
 
     private static final String TAG = "ExcelParsingService";
 
@@ -73,6 +82,47 @@ public class ExcelParsingService {
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+
+    // ─── Implementacja ScheduleParser ────────────────────────────────────
+
+    @Override
+    public boolean supports(String mimeType) {
+        if (mimeType == null) return false;
+        String lower = mimeType.toLowerCase();
+        return lower.contains("spreadsheet") || lower.contains("excel")
+                || lower.contains("xlsx") || lower.contains("xls");
+    }
+
+    @Override
+    public ScheduleParseResult parse(InputStream inputStream, ScheduleParseOptions options) throws Exception {
+        ParseResult legacyResult = parseFullSchedule(inputStream);
+        if (legacyResult == null) {
+            List<ParserWarning> warnings = new ArrayList<>();
+            warnings.add(new ParserWarning(ParserWarning.Type.LOW_CONFIDENCE, "Nie udało się sparsować pliku Excel."));
+            return new ScheduleParseResult(null, null, null, null, warnings, 0.0f, "Excel");
+        }
+
+        List<GlobalShift> globalShifts = generateGlobalShifts(legacyResult);
+        List<ParserWarning> warnings = new ArrayList<>();
+        float confidence = 0.95f;
+
+        ScheduleParseResult unifiedResult = new ScheduleParseResult(
+                legacyResult.getScheduleByName(),
+                legacyResult.getAllDates(),
+                getFormattedEmployeeNames(legacyResult),
+                globalShifts,
+                warnings,
+                confidence,
+                "Grafik Excel (.xlsx)"
+        );
+
+        if (options != null && options.getTargetUserName() != null && !options.getTargetUserName().isEmpty()) {
+            List<Shift> userShifts = parseScheduleFromParsedResult(legacyResult, options.getTargetUserName());
+            unifiedResult.setTargetUserShifts(userShifts);
+        }
+
+        return unifiedResult;
+    }
 
     // ─── Publiczne API ───────────────────────────────────────────────────
 
@@ -110,7 +160,11 @@ public class ExcelParsingService {
      */
     public List<Shift> parseSchedule(InputStream excelFileStream, String targetUserName) {
         ParseResult result = parseFullSchedule(excelFileStream);
-        if (result == null) return new ArrayList<>();
+        return parseScheduleFromParsedResult(result, targetUserName);
+    }
+
+    public List<Shift> parseScheduleFromParsedResult(ParseResult result, String targetUserName) {
+        if (result == null || result.scheduleByName == null) return new ArrayList<>();
 
         // Szukamy pracownika (case-insensitive, ignorujemy kropki)
         String targetNorm = normalize(targetUserName);

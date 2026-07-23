@@ -30,6 +30,7 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 
+import java.io.InputStream;
 import java.util.Locale;
 
 public class DashboardFragment extends Fragment {
@@ -66,6 +67,37 @@ public class DashboardFragment extends Fragment {
     // Quick Actions
     private MaterialButton btnPayrollDetails;
     private MaterialButton btnSyncSchedule;
+    private MaterialButton btnImportPdf;
+    private MaterialButton btnImportOcr;
+
+    private final androidx.activity.result.ActivityResultLauncher<String[]> pdfPickerLauncher =
+            registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri != null) {
+                    parsePdfUri(uri);
+                }
+            });
+
+    private void parsePdfUri(android.net.Uri uri) {
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            try (InputStream is = requireContext().getContentResolver().openInputStream(uri)) {
+                com.asystent.kinowy.parsers.PdfScheduleParser pdfParser = new com.asystent.kinowy.parsers.PdfScheduleParser();
+                String userName = getPrefs().getString(PREF_USER_NAME, "");
+                com.asystent.kinowy.parsers.ScheduleParseOptions options =
+                        com.asystent.kinowy.parsers.ScheduleParseOptions.defaultOptions(userName);
+
+                com.asystent.kinowy.parsers.ScheduleParseResult result = pdfParser.parse(is, options);
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> viewModel.setPendingImport(result));
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Błąd parsowania PDF z Uri", e);
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() ->
+                            Toast.makeText(requireContext(), "Błąd odczytu pliku PDF: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }
+        });
+    }
 
     @Nullable
     @Override
@@ -101,6 +133,18 @@ public class DashboardFragment extends Fragment {
 
         btnPayrollDetails = view.findViewById(R.id.btn_payroll_details);
         btnSyncSchedule = view.findViewById(R.id.btn_sync_schedule);
+        btnImportPdf = view.findViewById(R.id.btn_import_pdf);
+        btnImportOcr = view.findViewById(R.id.btn_import_ocr);
+
+        if (btnImportPdf != null) {
+            btnImportPdf.setOnClickListener(v -> pdfPickerLauncher.launch(new String[]{"application/pdf", "*/*"}));
+        }
+
+        if (btnImportOcr != null) {
+            btnImportOcr.setOnClickListener(v ->
+                Toast.makeText(requireContext(), "Skanowanie zdjęć OCR zostanie udostępnione po dostarczeniu zdjęć grafiku.", Toast.LENGTH_SHORT).show()
+            );
+        }
 
         // Load goal
         int savedGoal = getPrefs().getInt(PREF_MONTHLY_GOAL, 100);
@@ -115,6 +159,15 @@ public class DashboardFragment extends Fragment {
         setupQuickActions();
         observeDashboardData();
         observeSyncStatus();
+
+        viewModel.getPendingImport().observe(getViewLifecycleOwner(), result -> {
+            if (result != null) {
+                getParentFragmentManager().beginTransaction()
+                        .replace(R.id.fragment_container, new ImportPreviewFragment())
+                        .addToBackStack(null)
+                        .commit();
+            }
+        });
 
         configureGoogleSignIn();
         btnGoogleSignIn.setOnClickListener(v -> startSignIn());
