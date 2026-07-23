@@ -30,6 +30,7 @@ public class Shift {
     @ColumnInfo(name = "confirmed")
     private boolean confirmed;
 
+    @ColumnInfo(name = "isManual", defaultValue = "0")
     private boolean isManual;
 
     @ColumnInfo(name = "is_replacement", defaultValue = "false")

@@ -266,12 +266,23 @@ public class MainViewModel extends AndroidViewModel {
             java.time.LocalDateTime upcomingTime = null;
 
             for (Shift shift : shifts) {
-                if (shift.getDate() == null || shift.getStartTime() == null) continue;
+                if (shift.getDate() == null || shift.getStartTime() == null
+                        || shift.getEndTime() == null) continue;
                 try {
                     java.time.LocalDate date = java.time.LocalDate.parse(shift.getDate());
-                    LocalTime time = LocalTime.parse(shift.getStartTime());
-                    java.time.LocalDateTime shiftStart = java.time.LocalDateTime.of(date, time);
-                    if (shiftStart.isAfter(now)) {
+                    LocalTime startLt = LocalTime.parse(shift.getStartTime());
+                    LocalTime endLt   = LocalTime.parse(shift.getEndTime());
+
+                    java.time.LocalDateTime shiftStart = java.time.LocalDateTime.of(date, startLt);
+                    java.time.LocalDateTime shiftEnd   = java.time.LocalDateTime.of(date, endLt);
+
+                    // Obsługa nocki: jeśli koniec jest przed startem, zmiana kończy się następnego dnia
+                    if (endLt.isBefore(startLt)) {
+                        shiftEnd = shiftEnd.plusDays(1);
+                    }
+
+                    // Uwzględniamy zmiany które jeszcze się nie skończyły (trwające lub przyszłe)
+                    if (shiftEnd.isAfter(now)) {
                         if (upcomingTime == null || shiftStart.isBefore(upcomingTime)) {
                             upcomingTime = shiftStart;
                             upcoming = shift;
@@ -994,6 +1005,14 @@ public class MainViewModel extends AndroidViewModel {
                 Log.e(TAG, "Błąd eksportu zmiany do kalendarza", e);
             }
         }
+    }
+
+    // ─── Cykl życia ViewModel ─────────────────────────────────────────────
+
+    @Override
+    protected void onCleared() {
+        super.onCleared();
+        executor.shutdown(); // Zwolnij wątki gdy ViewModel jest niszczony
     }
 
 }

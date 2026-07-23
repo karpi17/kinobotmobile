@@ -201,7 +201,7 @@ public class AlarmScheduler {
             return;
         }
 
-        long triggerAtMillis = System.currentTimeMillis() + (1 * 60 * 1000); // +10 minut
+        long triggerAtMillis = System.currentTimeMillis() + (10 * 60 * 1000); // +10 minut
 
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) {

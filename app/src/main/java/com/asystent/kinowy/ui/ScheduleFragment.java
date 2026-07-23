@@ -188,13 +188,18 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             return;
         }
 
+        // Pobierz Context PRZED wejściem w wątek tła — requireContext() rzuca
+        // IllegalStateException jeśli fragment jest odpięty (np. user przełączy zakładkę)
+        if (!isAdded()) return;
+        final android.content.Context ctx = requireContext().getApplicationContext();
+
         Executors.newSingleThreadExecutor().execute(() -> {
             List<GlobalShift> dailyShifts = viewModel.getGlobalShiftsByDate(date);
             List<GlobalShift> overlapping = com.asystent.kinowy.utils.ShiftUtils
                     .getOverlappingShifts(myStart, myEnd, dailyShifts);
 
-            // Odfiltruj własne imię — tak samo jak widget (czytamy z SharedPrefs)
-            String myName = requireContext()
+            // Odfiltruj własne imię — czytamy z ctx (Application Context = zawsze bezpieczny)
+            String myName = ctx
                     .getSharedPreferences("asystent_kinowy_prefs",
                             android.content.Context.MODE_PRIVATE)
                     .getString("user_name", "").trim();
@@ -209,10 +214,11 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 overlapping = filtered;
             }
 
-            // Aktualizuj UI na main thread
+            // Aktualizuj UI na main thread — sprawdź isAdded() ponownie
             final List<GlobalShift> finalList = overlapping;
             if (isAdded() && getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
+                    if (!isAdded()) return; // fragment mógł zostać odpięty zanim runOnUiThread wykonał
                     if (finalList == null || finalList.isEmpty()) {
                         sectionLayout.setVisibility(View.GONE);
                     } else {
@@ -233,6 +239,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
      */
     private void showCoworkerEditDialog(GlobalShift gs, int position,
                                          CoworkerAdapter adapter,
+                                         RecyclerView rvCoworkers,
                                          Runnable refreshAll) {
         View editView = LayoutInflater.from(requireContext())
                 .inflate(R.layout.dialog_shift, null); // Reuse time picker approach
@@ -310,20 +317,17 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                     adapter.updateAt(position, gs);
 
                     // Pełne odświeżenie po krótkim opóźnieniu (dajemy czas na zapis)
-                    rvCoworkersRef.postDelayed(refreshAll::run, 300);
+                    rvCoworkers.postDelayed(refreshAll::run, 300);
                 })
                 .setNeutralButton("Usuń ze zmiany", (dialog, which) -> {
                     viewModel.deleteGlobalShift(gs);
                     adapter.removeAt(position);
 
-                    rvCoworkersRef.postDelayed(refreshAll::run, 300);
+                    rvCoworkers.postDelayed(refreshAll::run, 300);
                 })
                 .setNegativeButton("Anuluj", null)
                 .show();
     }
-
-    // Referencja do RecyclerView coworkerów — set w showShiftDialog
-    private RecyclerView rvCoworkersRef;
 
     // Data aktualnie otwartej zmiany — potrzebna do showAddCoworkerDialog
     private String currentShiftDate;
@@ -539,7 +543,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         RecyclerView rvCoworkers = dialogView.findViewById(R.id.rv_coworkers_list);
         final CoworkerAdapter[] adapterHolder = new CoworkerAdapter[1];
         CoworkerAdapter coworkerAdapter = new CoworkerAdapter((gs, pos) -> {
-            showCoworkerEditDialog(gs, pos, adapterHolder[0], () -> {
+            showCoworkerEditDialog(gs, pos, adapterHolder[0], rvCoworkers, () -> {
                 // Pełne odświeżenie po edycji/usunięciu
                 String d2 = etDate.getText() != null ? etDate.getText().toString().trim() : "";
                 String s2 = etStart.getText() != null ? etStart.getText().toString().trim() : "";
@@ -550,7 +554,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         adapterHolder[0] = coworkerAdapter;
         rvCoworkers.setLayoutManager(new LinearLayoutManager(requireContext()));
         rvCoworkers.setAdapter(coworkerAdapter);
-        rvCoworkersRef = rvCoworkers;
+        // rvCoworkersRef usunięty — rvCoworkers przekazywany bezpośrednio przez Runnable
 
         // ═════ Przycisk: Dodaj współpracownika ═════
         android.widget.Button btnAddCoworker = dialogView.findViewById(R.id.btn_add_coworker);
