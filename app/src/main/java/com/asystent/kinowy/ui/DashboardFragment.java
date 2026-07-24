@@ -70,30 +70,40 @@ public class DashboardFragment extends Fragment {
     private MaterialButton btnImportPdf;
     private MaterialButton btnImportOcr;
 
-    private final androidx.activity.result.ActivityResultLauncher<String[]> pdfPickerLauncher =
+    private final androidx.activity.result.ActivityResultLauncher<String[]> filePickerLauncher =
             registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.OpenDocument(), uri -> {
                 if (uri != null) {
-                    parsePdfUri(uri);
+                    parseFileUri(uri);
                 }
             });
 
-    private void parsePdfUri(android.net.Uri uri) {
+    private void parseFileUri(android.net.Uri uri) {
         java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
             try (InputStream is = requireContext().getContentResolver().openInputStream(uri)) {
-                com.asystent.kinowy.parsers.PdfScheduleParser pdfParser = new com.asystent.kinowy.parsers.PdfScheduleParser();
-                String userName = getPrefs().getString(PREF_USER_NAME, "");
+                String mimeType = requireContext().getContentResolver().getType(uri);
+                String path = uri.getPath() != null ? uri.getPath().toLowerCase() : "";
+
+                com.asystent.kinowy.parsers.ScheduleParser parser;
+                if ((mimeType != null && mimeType.contains("pdf")) || path.endsWith(".pdf")) {
+                    parser = new com.asystent.kinowy.parsers.PdfScheduleParser();
+                } else {
+                    // Domyślnie używamy nowego parsera XLS/XLSX
+                    parser = new com.asystent.kinowy.parsers.NewFormatExcelParser();
+                }
+
+                String userName = getPrefs().getString(PREF_USER_NAME, "Kacper");
                 com.asystent.kinowy.parsers.ScheduleParseOptions options =
                         com.asystent.kinowy.parsers.ScheduleParseOptions.defaultOptions(userName);
 
-                com.asystent.kinowy.parsers.ScheduleParseResult result = pdfParser.parse(is, options);
+                com.asystent.kinowy.parsers.ScheduleParseResult result = parser.parse(is, options);
                 if (getActivity() != null) {
                     getActivity().runOnUiThread(() -> viewModel.setPendingImport(result));
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Błąd parsowania PDF z Uri", e);
+                Log.e(TAG, "Błąd parsowania pliku z Uri", e);
                 if (getActivity() != null) {
                     getActivity().runOnUiThread(() ->
-                            Toast.makeText(requireContext(), "Błąd odczytu pliku PDF: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                            Toast.makeText(requireContext(), "Błąd odczytu pliku: " + e.getMessage(), Toast.LENGTH_LONG).show());
                 }
             }
         });
@@ -137,7 +147,12 @@ public class DashboardFragment extends Fragment {
         btnImportOcr = view.findViewById(R.id.btn_import_ocr);
 
         if (btnImportPdf != null) {
-            btnImportPdf.setOnClickListener(v -> pdfPickerLauncher.launch(new String[]{"application/pdf", "*/*"}));
+            btnImportPdf.setOnClickListener(v -> filePickerLauncher.launch(new String[]{
+                    "application/pdf",
+                    "application/vnd.ms-excel",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "*/*"
+            }));
         }
 
         if (btnImportOcr != null) {
