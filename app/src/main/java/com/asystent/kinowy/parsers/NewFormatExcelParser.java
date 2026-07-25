@@ -101,7 +101,7 @@ public class NewFormatExcelParser implements ScheduleParser {
         int monthValue = parseMonthFromSheet(sheet);
         if (monthValue == -1) {
             monthValue = LocalDate.now().getMonthValue();
-            warnings.add(new ParserWarning(ParserWarning.Type.MISSING_DATA,
+            warnings.add(new ParserWarning(ParserWarning.Type.OTHER,
                     "Nie wykryto nazwy miesiąca w nagłówku. Przyjęto bieżący miesiąc."));
         }
 
@@ -115,7 +115,7 @@ public class NewFormatExcelParser implements ScheduleParser {
         EmployeeHeader targetUserCol = findTargetUserColumn(employees, targetUserName);
 
         if (targetUserCol == null) {
-            warnings.add(new ParserWarning(ParserWarning.Type.NAME_NOT_FOUND,
+            warnings.add(new ParserWarning(ParserWarning.Type.UNKNOWN_NAME,
                     "Nie znaleziono w grafiku pracownika o imieniu: " + targetUserName + ". Używam pierwszej dostępnej kolumny Team Leader."));
             targetUserCol = employees.stream()
                     .filter(e -> e.position.equalsIgnoreCase("Team Leader"))
@@ -171,10 +171,9 @@ public class NewFormatExcelParser implements ScheduleParser {
                             dateStr,
                             info.startTime,
                             info.endTime,
-                            emp.position,
-                            false
+                            info.category
                     );
-                    gs.setReplacement(false);
+                    gs.setManuallyEdited(false);
                     allGlobalShifts.add(gs);
 
                     // Jeśli to nie sam użytkownik, dodajemy imię do ekipy z tego dnia
