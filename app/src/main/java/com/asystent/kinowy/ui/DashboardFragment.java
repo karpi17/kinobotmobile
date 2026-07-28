@@ -84,16 +84,21 @@ public class DashboardFragment extends Fragment {
                 String path = uri.getPath() != null ? uri.getPath().toLowerCase() : "";
 
                 com.asystent.kinowy.parsers.ScheduleParser parser;
-                if ((mimeType != null && mimeType.contains("pdf")) || path.endsWith(".pdf")) {
+                if ((mimeType != null && (mimeType.contains("image") || mimeType.contains("jpg") || mimeType.contains("png")))
+                        || path.endsWith(".jpg") || path.endsWith(".png") || path.endsWith(".jpeg")) {
+                    parser = new com.asystent.kinowy.parsers.OcrScheduleParser();
+                } else if ((mimeType != null && mimeType.contains("pdf")) || path.endsWith(".pdf")) {
                     parser = new com.asystent.kinowy.parsers.PdfScheduleParser();
                 } else {
-                    // Domyślnie używamy nowego parsera XLS/XLSX
-                    parser = new com.asystent.kinowy.parsers.NewFormatExcelParser();
+                    // Automatyczna detekcja formatu (stary vs nowy)
+                    parser = new com.asystent.kinowy.parsers.AutoDetectExcelParser();
                 }
 
                 String userName = getPrefs().getString(PREF_USER_NAME, "Kacper");
+                String preferredRole = getPrefs().getString("preferred_role", null);
+                
                 com.asystent.kinowy.parsers.ScheduleParseOptions options =
-                        com.asystent.kinowy.parsers.ScheduleParseOptions.defaultOptions(userName);
+                        new com.asystent.kinowy.parsers.ScheduleParseOptions(userName, preferredRole, -1, true);
 
                 com.asystent.kinowy.parsers.ScheduleParseResult result = parser.parse(is, options);
                 if (getActivity() != null) {
@@ -156,9 +161,7 @@ public class DashboardFragment extends Fragment {
         }
 
         if (btnImportOcr != null) {
-            btnImportOcr.setOnClickListener(v ->
-                Toast.makeText(requireContext(), "Skanowanie zdjęć OCR zostanie udostępnione po dostarczeniu zdjęć grafiku.", Toast.LENGTH_SHORT).show()
-            );
+            btnImportOcr.setOnClickListener(v -> filePickerLauncher.launch(new String[]{"image/*"}));
         }
 
         // Load goal

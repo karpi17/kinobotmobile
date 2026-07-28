@@ -41,10 +41,10 @@ public class NewFormatExcelParser implements ScheduleParser {
 
     private static final String TAG = "NewFormatExcelParser";
 
-    // Wzorce regex dla godzin
-    private static final Pattern RANGE_PATTERN = Pattern.compile("(\\d{1,2})\\s*[\u2013\u2014-]\u0020*(\\d{1,2})");
-    private static final Pattern CLOSE_OD_PATTERN = Pattern.compile("close\\s+od\\s+(\\d{1,2})", Pattern.CASE_INSENSITIVE);
-    private static final Pattern OPEN_DO_PATTERN = Pattern.compile("open\\s+do\\s+(\\d{1,2})", Pattern.CASE_INSENSITIVE);
+    // Wzorce regex dla godzin (wspiera minuty np. 10.30, 10:30 oraz różne separatory np. -, /, \)
+    private static final Pattern RANGE_PATTERN = Pattern.compile("(\\d{1,2})(?:[:.](\\d{2}))?\\s*[-–—/\\\\]\\s*(\\d{1,2})(?:[:.](\\d{2}))?");
+    private static final Pattern CLOSE_OD_PATTERN = Pattern.compile("close\\s+od\\s+(\\d{1,2})(?:[:.](\\d{2}))?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern OPEN_DO_PATTERN = Pattern.compile("open\\s+do\\s+(\\d{1,2})(?:[:.](\\d{2}))?", Pattern.CASE_INSENSITIVE);
 
     public static class EmployeeHeader {
         public final int colIndex;
@@ -97,7 +97,7 @@ public class NewFormatExcelParser implements ScheduleParser {
         Sheet sheet = workbook.getSheetAt(0);
 
         // 1. Wykrycie miesiąca i roku
-        int currentYear = Year.now().getValue();
+        int currentYear = (options != null && options.getSelectedYear() > 0) ? options.getSelectedYear() : Year.now().getValue();
         int monthValue = parseMonthFromSheet(sheet);
         if (monthValue == -1) {
             monthValue = LocalDate.now().getMonthValue();
@@ -112,7 +112,8 @@ public class NewFormatExcelParser implements ScheduleParser {
         }
 
         String targetUserName = options != null ? options.getTargetUserName() : "Kacper";
-        EmployeeHeader targetUserCol = findTargetUserColumn(employees, targetUserName);
+        String targetRole = options != null ? options.getTargetRole() : null;
+        EmployeeHeader targetUserCol = findTargetUserColumn(employees, targetUserName, targetRole);
 
         if (targetUserCol == null) {
             warnings.add(new ParserWarning(ParserWarning.Type.UNKNOWN_NAME,
@@ -223,6 +224,19 @@ public class NewFormatExcelParser implements ScheduleParser {
 
                 targetUserShifts.add(userShift);
                 scheduleByName.get(targetUserCol.name).add(userShift);
+            } else {
+                // Pokazujemy w podglądzie jako WOLNE (żeby zachować ciągłość dni)
+                Shift userShift = new Shift(
+                        dateStr,
+                        "",
+                        "",
+                        "WOLNE",
+                        false,
+                        false,
+                        "UNKNOWN"
+                );
+                targetUserShifts.add(userShift);
+                scheduleByName.get(targetUserCol.name).add(userShift);
             }
         }
 
@@ -289,11 +303,19 @@ public class NewFormatExcelParser implements ScheduleParser {
         return result;
     }
 
-    private EmployeeHeader findTargetUserColumn(List<EmployeeHeader> employees, String targetUserName) {
+    private EmployeeHeader findTargetUserColumn(List<EmployeeHeader> employees, String targetUserName, String targetRole) {
         if (targetUserName == null || targetUserName.isEmpty()) targetUserName = "Kacper";
         String lowerTarget = targetUserName.toLowerCase();
 
-        // Najpierw szukamy pod stanowiskiem Team Leader
+        if (targetRole != null && !targetRole.isEmpty()) {
+            for (EmployeeHeader emp : employees) {
+                if (emp.position.equalsIgnoreCase(targetRole) && emp.name.toLowerCase().contains(lowerTarget)) {
+                    return emp;
+                }
+            }
+        }
+
+        // Szukamy pod stanowiskiem Team Leader jako domyślnie
         for (EmployeeHeader emp : employees) {
             if (emp.position.equalsIgnoreCase("Team Leader") && emp.name.toLowerCase().contains(lowerTarget)) {
                 return emp;
@@ -331,13 +353,32 @@ public class NewFormatExcelParser implements ScheduleParser {
         String text = rawText.trim();
         String lower = text.toLowerCase();
 
+        // Autokorekta błędów OCR
+        lower = lower.replace("ciose", "close")
+                     .replace("c1ose", "close")
+                     .replace("clos=", "close")
+                     .replace("cios=", "close")
+                     .replace("0pen", "open")
+                     .replace("oden", "open")
+                     .replace("s2k", "szk")
+                     .replace("--", "-")
+                     .replaceAll("^oft$", "off")
+                     .replaceAll("^of$", "off")
+                     .replaceAll("^offt$", "off")
+                     .replaceAll("^0ff$", "off");
+
+        // Jeśli to jest coś typu "open szk TMS", skróćmy to tylko do "open"
+        if (lower.contains("open") && lower.contains("tms")) {
+            lower = "open";
+        }
+
         if (lower.equals("off") || lower.equals("vacation") || lower.equals("urlop") || lower.equals("wz")) {
             return new ParsedShiftInfo(false);
         }
 
         // 1. Szkolenie Open / Open
         if (lower.equals("open") || lower.equals("szk open")) {
-            return new ParsedShiftInfo("09:00", "16:00", false, text.startsWith("szk") ? text : "", "OBSŁUGA");
+            return new ParsedShiftInfo("09:00", "17:00", false, text.startsWith("szk") ? text : "", "OBSŁUGA");
         }
 
         // 2. Szkolenie Close / Close
@@ -349,7 +390,8 @@ public class NewFormatExcelParser implements ScheduleParser {
         Matcher closeOdMatcher = CLOSE_OD_PATTERN.matcher(lower);
         if (closeOdMatcher.find()) {
             int startHour = Integer.parseInt(closeOdMatcher.group(1));
-            String startTime = String.format(Locale.US, "%02d:00", startHour);
+            int startMin = closeOdMatcher.group(2) != null ? Integer.parseInt(closeOdMatcher.group(2)) : 0;
+            String startTime = String.format(Locale.US, "%02d:%02d", startHour, startMin);
             return new ParsedShiftInfo(startTime, "01:00", true, text, "ZAMEK");
         }
 
@@ -357,17 +399,21 @@ public class NewFormatExcelParser implements ScheduleParser {
         Matcher openDoMatcher = OPEN_DO_PATTERN.matcher(lower);
         if (openDoMatcher.find()) {
             int endHour = Integer.parseInt(openDoMatcher.group(1));
-            String endTime = String.format(Locale.US, "%02d:00", endHour);
+            int endMin = openDoMatcher.group(2) != null ? Integer.parseInt(openDoMatcher.group(2)) : 0;
+            String endTime = String.format(Locale.US, "%02d:%02d", endHour, endMin);
             return new ParsedShiftInfo("09:00", endTime, false, text, "OBSŁUGA");
         }
 
-        // 5. Zakres z myślnikiem e.g. "14–22", "12–20", "TMS paczki 17–22"
+        // 5. Zakres z różnymi separatorami e.g. "14-22", "12.30-20.30", "10/18", "TMS paczki 17–22"
         Matcher rangeMatcher = RANGE_PATTERN.matcher(text);
         if (rangeMatcher.find()) {
             int startHour = Integer.parseInt(rangeMatcher.group(1));
-            int endHour = Integer.parseInt(rangeMatcher.group(2));
-            String startTime = String.format(Locale.US, "%02d:00", startHour);
-            String endTime = String.format(Locale.US, "%02d:00", endHour);
+            int startMin = rangeMatcher.group(2) != null ? Integer.parseInt(rangeMatcher.group(2)) : 0;
+            int endHour = Integer.parseInt(rangeMatcher.group(3));
+            int endMin = rangeMatcher.group(4) != null ? Integer.parseInt(rangeMatcher.group(4)) : 0;
+            
+            String startTime = String.format(Locale.US, "%02d:%02d", startHour, startMin);
+            String endTime = String.format(Locale.US, "%02d:%02d", endHour, endMin);
             boolean isClosing = endHour <= 5 || endHour >= 23;
             String desc = text.replace(rangeMatcher.group(0), "").trim();
             return new ParsedShiftInfo(startTime, endTime, isClosing, desc, isClosing ? "ZAMEK" : "OBSŁUGA");

@@ -117,13 +117,44 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Sekcja z listą Twoich zmian -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
+            android:layout_marginBottom="4dp"
+            android:text="OPCJE IMPORTU:"
+            android:textColor="#E0E0E0"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Twoja rola (stanowisko): "
+                android:textColor="#B0B0B0"
+                android:textSize="14sp" />
+
+            <Spinner
+                android:id="@+id/spinnerRole"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:entries="@array/roles_array"
+                android:backgroundTint="#FFFFFF"/>
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
-            android:text="TWOJE ZMIANY W TEJ PACZCE:"
+            android:text="TWOJE ZMIANY W TEJ PACZCE (Kliknij, aby edytować godziny):"
             android:textColor="#E0E0E0"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -131,8 +162,7 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvPreviewShifts"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
+            android:layout_height="wrap_content"
             android:nestedScrollingEnabled="false"
             tools:listitem="@layout/item_shift" />
 

@@ -25,7 +25,7 @@ public class NewFormatExcelParserTest {
         NewFormatExcelParser.ParsedShiftInfo info = parser.parseShiftText("open");
         assertTrue(info.isShift);
         assertEquals("09:00", info.startTime);
-        assertEquals("16:00", info.endTime);
+        assertEquals("17:00", info.endTime);
         assertFalse(info.isClosingShift);
     }
 
@@ -34,7 +34,7 @@ public class NewFormatExcelParserTest {
         NewFormatExcelParser.ParsedShiftInfo info = parser.parseShiftText("szk open");
         assertTrue(info.isShift);
         assertEquals("09:00", info.startTime);
-        assertEquals("16:00", info.endTime);
+        assertEquals("17:00", info.endTime);
         assertFalse(info.isClosingShift);
     }
 
@@ -60,6 +60,12 @@ public class NewFormatExcelParserTest {
         assertEquals("20:00", info20.startTime);
         assertEquals("01:00", info20.endTime);
         assertTrue(info20.isClosingShift);
+
+        NewFormatExcelParser.ParsedShiftInfo info1930 = parser.parseShiftText("close od 19:30");
+        assertTrue(info1930.isShift);
+        assertEquals("19:30", info1930.startTime);
+        assertEquals("01:00", info1930.endTime);
+        assertTrue(info1930.isClosingShift);
     }
 
     @Test
@@ -69,6 +75,12 @@ public class NewFormatExcelParserTest {
         assertEquals("09:00", info.startTime);
         assertEquals("20:00", info.endTime);
         assertFalse(info.isClosingShift);
+
+        NewFormatExcelParser.ParsedShiftInfo info1730 = parser.parseShiftText("open do 17.30");
+        assertTrue(info1730.isShift);
+        assertEquals("09:00", info1730.startTime);
+        assertEquals("17:30", info1730.endTime);
+        assertFalse(info1730.isClosingShift);
     }
 
     @Test
@@ -82,6 +94,21 @@ public class NewFormatExcelParserTest {
         assertTrue(info12_20.isShift);
         assertEquals("12:00", info12_20.startTime);
         assertEquals("20:00", info12_20.endTime);
+
+        NewFormatExcelParser.ParsedShiftInfo info10_18 = parser.parseShiftText("10/18");
+        assertTrue(info10_18.isShift);
+        assertEquals("10:00", info10_18.startTime);
+        assertEquals("18:00", info10_18.endTime);
+
+        NewFormatExcelParser.ParsedShiftInfo info1030_1830 = parser.parseShiftText("10.30-18.30");
+        assertTrue(info1030_1830.isShift);
+        assertEquals("10:30", info1030_1830.startTime);
+        assertEquals("18:30", info1030_1830.endTime);
+
+        NewFormatExcelParser.ParsedShiftInfo info1115_1945 = parser.parseShiftText("11:15 - 19:45");
+        assertTrue(info1115_1945.isShift);
+        assertEquals("11:15", info1115_1945.startTime);
+        assertEquals("19:45", info1115_1945.endTime);
     }
 
     @Test

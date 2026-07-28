@@ -27,5 +27,16 @@
 
     <!-- Navigation Drawer -->
     <string name="navigation_drawer_open">Otwórz menu</string>
+    <!-- Roles -->
+    <string-array name="roles_array">
+        <item>Dowolna (Automatycznie)</item>
+        <item>Obsługa</item>
+        <item>Bar</item>
+        <item>Kasa</item>
+        <item>Team Leader</item>
+        <item>Manager</item>
+        <item>Deputy Manager</item>
+    </string-array>
+
     <string name="navigation_drawer_close">Zamknij menu</string>
 </resources>

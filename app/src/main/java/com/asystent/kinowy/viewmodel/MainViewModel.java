@@ -802,12 +802,21 @@ public class MainViewModel extends AndroidViewModel {
                 if (userShifts != null && !userShifts.isEmpty()) {
                     if (safeMode) {
                         for (Shift s : userShifts) {
+                            if (s.getStartTime() == null || s.getStartTime().isEmpty() || s.getEndTime() == null || s.getEndTime().isEmpty()) {
+                                continue; // Ignoruj wolne dni
+                            }
                             shiftRepository.insert(s);
                             addedCount++;
                         }
                     } else {
-                        processAndMergeAllShifts(userShifts);
-                        addedCount = userShifts.size();
+                        List<Shift> validShifts = new ArrayList<>();
+                        for (Shift s : userShifts) {
+                            if (s.getStartTime() != null && !s.getStartTime().isEmpty() && s.getEndTime() != null && !s.getEndTime().isEmpty()) {
+                                validShifts.add(s);
+                            }
+                        }
+                        processAndMergeAllShifts(validShifts);
+                        addedCount = validShifts.size();
                     }
                 }
 

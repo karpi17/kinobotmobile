@@ -100,8 +100,12 @@ dependencies {
     implementation 'com.google.android.gms:play-services-auth-api-phone:18.0.2'
 
     // Apache POI – .xlsx parsing
-    implementation 'org.apache.poi:poi:5.2.5'
-    implementation 'org.apache.poi:poi-ooxml:5.2.5'
+    implementation 'org.apache.poi:poi:5.3.0'
+    implementation 'org.apache.poi:poi-ooxml:5.3.0'
+    implementation 'org.apache.commons:commons-compress:1.26.1'
+
+    // ML Kit - OCR
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
 
     // MPAndroidChart
     implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'

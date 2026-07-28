@@ -1,10 +1,14 @@
 package com.asystent.kinowy.ui;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.Button;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -42,6 +46,7 @@ public class ImportPreviewFragment extends Fragment {
     private TextView tvEmptyShiftsNotice;
     private Button btnCancelImport;
     private Button btnConfirmImport;
+    private Spinner spinnerRole;
 
     private ShiftAdapter shiftAdapter;
 
@@ -68,12 +73,39 @@ public class ImportPreviewFragment extends Fragment {
         tvEmptyShiftsNotice = view.findViewById(R.id.tvEmptyShiftsNotice);
         btnCancelImport = view.findViewById(R.id.btnCancelImport);
         btnConfirmImport = view.findViewById(R.id.btnConfirmImport);
+        spinnerRole = view.findViewById(R.id.spinnerRole);
 
         rvPreviewShifts.setLayoutManager(new LinearLayoutManager(requireContext()));
         shiftAdapter = new ShiftAdapter(shift -> {
-            // Po prostu podgląd w tym miejscu
+            showEditShiftDialog(shift);
         });
         rvPreviewShifts.setAdapter(shiftAdapter);
+
+        // Ustawienie wartości Spinnera z SharedPreferences
+        SharedPreferences prefs = requireContext().getSharedPreferences("asystent_kinowy_prefs", Context.MODE_PRIVATE);
+        String currentRole = prefs.getString("preferred_role", "Dowolna (Automatycznie)");
+        String[] rolesArray = getResources().getStringArray(R.array.roles_array);
+        for (int i = 0; i < rolesArray.length; i++) {
+            if (rolesArray[i].equals(currentRole)) {
+                spinnerRole.setSelection(i);
+                break;
+            }
+        }
+
+        spinnerRole.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                String selected = parent.getItemAtPosition(position).toString();
+                String saved = prefs.getString("preferred_role", "Dowolna (Automatycznie)");
+                if (!selected.equals(saved)) {
+                    prefs.edit().putString("preferred_role", selected).apply();
+                    Toast.makeText(requireContext(), "Zmieniono rolę na: " + selected + ". Zimportuj grafik ponownie, aby zastosować.", Toast.LENGTH_LONG).show();
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
+        });
 
         viewModel.getPendingImport().observe(getViewLifecycleOwner(), this::bindParseResult);
 
@@ -129,5 +161,46 @@ public class ImportPreviewFragment extends Fragment {
             tvEmptyShiftsNotice.setVisibility(View.GONE);
             shiftAdapter.setShifts(shifts);
         }
+    }
+
+    private void showEditShiftDialog(Shift shift) {
+        View dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_shift, null);
+
+        android.widget.EditText etStart = dialogView.findViewById(R.id.et_shift_start);
+        android.widget.EditText etEnd = dialogView.findViewById(R.id.et_shift_end);
+
+        if (etStart != null && etEnd != null) {
+            etStart.setText(shift.getStartTime());
+            etEnd.setText(shift.getEndTime());
+            
+            etStart.setFocusable(false);
+            etStart.setOnClickListener(v -> {
+                java.util.Calendar cal = java.util.Calendar.getInstance();
+                new android.app.TimePickerDialog(requireContext(), (view, h, m) -> {
+                    etStart.setText(String.format(java.util.Locale.getDefault(), "%02d:%02d", h, m));
+                }, cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), true).show();
+            });
+
+            etEnd.setFocusable(false);
+            etEnd.setOnClickListener(v -> {
+                java.util.Calendar cal = java.util.Calendar.getInstance();
+                new android.app.TimePickerDialog(requireContext(), (view, h, m) -> {
+                    etEnd.setText(String.format(java.util.Locale.getDefault(), "%02d:%02d", h, m));
+                }, cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), true).show();
+            });
+        }
+
+        new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle("Edytuj godziny zmiany")
+                .setView(dialogView)
+                .setPositiveButton("Zapisz", (dialog, which) -> {
+                    if (etStart != null && etEnd != null) {
+                        shift.setStartTime(etStart.getText().toString());
+                        shift.setEndTime(etEnd.getText().toString());
+                        shiftAdapter.notifyDataSetChanged();
+                    }
+                })
+                .setNegativeButton("Anuluj", null)
+                .show();
     }
 }
