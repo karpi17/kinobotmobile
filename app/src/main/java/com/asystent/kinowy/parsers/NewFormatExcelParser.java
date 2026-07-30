@@ -353,40 +353,44 @@ public class NewFormatExcelParser implements ScheduleParser {
         String text = rawText.trim();
         String lower = text.toLowerCase();
 
-        // Autokorekta błędów OCR
+        // Autokorekta błędów OCR - kolejność ważna (dłuższe przed krótszymi)
         lower = lower.replace("ciose", "close")
                      .replace("c1ose", "close")
                      .replace("clos=", "close")
                      .replace("cios=", "close")
+                     .replace("cios", "close")     // OCR: 'close' → 'cios'
                      .replace("0pen", "open")
                      .replace("oden", "open")
+                     .replace("oden", "open")
                      .replace("s2k", "szk")
-                     .replace("--", "-")
-                     .replaceAll("^oft$", "off")
-                     .replaceAll("^of$", "off")
-                     .replaceAll("^offt$", "off")
-                     .replaceAll("^0ff$", "off");
+                     .replace("--", "-");
 
-        // Jeśli to jest coś typu "open szk TMS", skróćmy to tylko do "open"
+        // Autokorekta "off" - obsługuje warianty z prefiksem/sufiksem cyfry (np. "8 of", "8 off")
+        // Zamieniamy tylko gdy jako token (po spacjach)
+        lower = lower.replaceAll("\\boft\\b", "off")
+                     .replaceAll("\\bofft\\b", "off")
+                     .replaceAll("\\b0ff\\b", "off")
+                     .replaceAll("\\bof\\b", "off");   // "8 of" → "8 off"
+
+        // Zaktualizuj text na podstawie lower
+        text = lower;
+
+        // Skrót TMS + open → traktuj jako open
         if (lower.contains("open") && lower.contains("tms")) {
-            lower = "open";
+            // Zachowaj opis TMS ale traktuj jako open
         }
 
-        if (lower.equals("off") || lower.equals("vacation") || lower.equals("urlop") || lower.equals("wz")) {
-            return new ParsedShiftInfo(false);
+        // ── KROK 1: Sprawdź czy to wolne (off/urlop) ───────────────────────────
+        // Używamy split żeby sprawdzić tokeny — "8 off" zawiera token "off"
+        for (String token : lower.split("\\s+")) {
+            if (token.equals("off") || token.equals("vacation") || token.equals("urlop") || token.equals("wz")) {
+                return new ParsedShiftInfo(false);
+            }
         }
 
-        // 1. Szkolenie Open / Open
-        if (lower.equals("open") || lower.equals("szk open")) {
-            return new ParsedShiftInfo("09:00", "17:00", false, text.startsWith("szk") ? text : "", "OBSŁUGA");
-        }
+        // ── KROK 2: Specyficzne wzorce (muszą być przed generycznymi) ──────────
 
-        // 2. Szkolenie Close / Close
-        if (lower.equals("close") || lower.equals("szk close")) {
-            return new ParsedShiftInfo("17:00", "01:00", true, text.startsWith("szk") ? text : "", "ZAMEK");
-        }
-
-        // 3. close od HH
+        // 2a. close od HH (np. "close od 14", "close od 14:30")
         Matcher closeOdMatcher = CLOSE_OD_PATTERN.matcher(lower);
         if (closeOdMatcher.find()) {
             int startHour = Integer.parseInt(closeOdMatcher.group(1));
@@ -395,7 +399,7 @@ public class NewFormatExcelParser implements ScheduleParser {
             return new ParsedShiftInfo(startTime, "01:00", true, text, "ZAMEK");
         }
 
-        // 4. open do HH
+        // 2b. open do HH (np. "open do 16", "open do 15:30")
         Matcher openDoMatcher = OPEN_DO_PATTERN.matcher(lower);
         if (openDoMatcher.find()) {
             int endHour = Integer.parseInt(openDoMatcher.group(1));
@@ -404,19 +408,40 @@ public class NewFormatExcelParser implements ScheduleParser {
             return new ParsedShiftInfo("09:00", endTime, false, text, "OBSŁUGA");
         }
 
-        // 5. Zakres z różnymi separatorami e.g. "14-22", "12.30-20.30", "10/18", "TMS paczki 17–22"
+        // 2c. Zakres HH-HH (np. "14-22", "12.30-20.30", "10/18", "8 12-20 8", "TMS paczki 17–22")
         Matcher rangeMatcher = RANGE_PATTERN.matcher(text);
         if (rangeMatcher.find()) {
             int startHour = Integer.parseInt(rangeMatcher.group(1));
             int startMin = rangeMatcher.group(2) != null ? Integer.parseInt(rangeMatcher.group(2)) : 0;
             int endHour = Integer.parseInt(rangeMatcher.group(3));
             int endMin = rangeMatcher.group(4) != null ? Integer.parseInt(rangeMatcher.group(4)) : 0;
-            
-            String startTime = String.format(Locale.US, "%02d:%02d", startHour, startMin);
-            String endTime = String.format(Locale.US, "%02d:%02d", endHour, endMin);
-            boolean isClosing = endHour <= 5 || endHour >= 23;
-            String desc = text.replace(rangeMatcher.group(0), "").trim();
-            return new ParsedShiftInfo(startTime, endTime, isClosing, desc, isClosing ? "ZAMEK" : "OBSŁUGA");
+
+            // Odrzuć fałszywe rangi: np. "8" odczytane jako "8-8" lub "1-8" bez sensu (oba poniżej 9)
+            // Prawidłowe godziny pracy: start >= 6, end >= 12 LUB end <= 5 (nocna)
+            boolean validRange = (startHour >= 6 && (endHour >= 12 || endHour <= 5));
+            if (validRange) {
+                String startTime = String.format(Locale.US, "%02d:%02d", startHour, startMin);
+                String endTime = String.format(Locale.US, "%02d:%02d", endHour, endMin);
+                boolean isClosing = endHour <= 5 || endHour >= 23;
+                String desc = text.replace(rangeMatcher.group(0), "").trim();
+                String category = isClosing ? "ZAMEK" : "OBSŁUGA";
+                if (lower.contains("tms")) category = "INNE (TMS)";
+                return new ParsedShiftInfo(startTime, endTime, isClosing, desc, category);
+            }
+        }
+
+        // ── KROK 3: Generyczne open/close (contains — obsługuje szum cyfr OCR) ──
+        // Szkolenie/TMS open: "szk open", "open szk TMS", "8 open 8", "open"
+        if (lower.contains("open")) {
+            String category = lower.contains("tms") ? "INNE (TMS)" : "OBSŁUGA";
+            String desc = lower.contains("szk") ? text : "";
+            return new ParsedShiftInfo("09:00", "17:00", false, desc, category);
+        }
+
+        // Szkolenie/generyczne close: "szk close", "close 8", "8 close", "8 close 8"
+        if (lower.contains("close")) {
+            String desc = lower.contains("szk") ? text : "";
+            return new ParsedShiftInfo("17:00", "01:00", true, desc, "ZAMEK");
         }
 
         return new ParsedShiftInfo(false);

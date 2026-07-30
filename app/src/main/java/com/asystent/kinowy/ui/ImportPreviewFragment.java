@@ -154,8 +154,38 @@ public class ImportPreviewFragment extends Fragment {
 
         List<Shift> shifts = result.getTargetUserShifts();
         if (shifts == null || shifts.isEmpty()) {
-            rvPreviewShifts.setVisibility(View.GONE);
-            tvEmptyShiftsNotice.setVisibility(View.VISIBLE);
+            // Tryb obserwatora: brak Twoich zmian – pokaż wszystkich pracowników
+            List<Shift> allShifts = new java.util.ArrayList<>();
+            if (result.getScheduleByName() != null) {
+                for (java.util.Map.Entry<String, java.util.List<Shift>> entry : result.getScheduleByName().entrySet()) {
+                    String empName = entry.getKey();
+                    for (Shift s : entry.getValue()) {
+                        // Dodaj imię pracownika do opisu żeby wiedzieć czyja to zmiana
+                        if (s.getDescription() == null || s.getDescription().isEmpty()) {
+                            s.setDescription(empName);
+                        } else if (!s.getDescription().contains(empName)) {
+                            s.setDescription(empName + ": " + s.getDescription());
+                        }
+                        allShifts.add(s);
+                    }
+                }
+                // Posortuj po dacie
+                allShifts.sort((a, b) -> {
+                    if (a.getDate() == null) return 1;
+                    if (b.getDate() == null) return -1;
+                    return a.getDate().compareTo(b.getDate());
+                });
+            }
+            if (allShifts.isEmpty()) {
+                rvPreviewShifts.setVisibility(View.GONE);
+                tvEmptyShiftsNotice.setVisibility(View.VISIBLE);
+                tvEmptyShiftsNotice.setText("Nie znaleziono zmian w pliku.");
+            } else {
+                tvSummaryDetails.setText("Tryb obserwatora: " + result.getFoundNames().size() + " pracowników, " + allShifts.size() + " zmian łącznie.");
+                rvPreviewShifts.setVisibility(View.VISIBLE);
+                tvEmptyShiftsNotice.setVisibility(View.GONE);
+                shiftAdapter.setShifts(allShifts);
+            }
         } else {
             rvPreviewShifts.setVisibility(View.VISIBLE);
             tvEmptyShiftsNotice.setVisibility(View.GONE);

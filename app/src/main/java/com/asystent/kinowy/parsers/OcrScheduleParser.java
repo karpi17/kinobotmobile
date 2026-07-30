@@ -17,12 +17,15 @@ import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Parser zdjęć grafików ze skanera OCR (ML Kit).
@@ -211,10 +214,16 @@ public class OcrScheduleParser implements ScheduleParser {
                     // Znaleźliśmy wiersz z rolami. Imiona mogą być w tym samym bloku (wieloliniowe) albo w następnym wierszu.
                     // Sprawdźmy, czy ten wiersz ma jakieś imiona (nie tylko role)
                     namesRow = row;
-                    // Jeśli to czyste role jak "[manager] [team leader]", weźmy wiersz poniżej o ile istnieje.
                     if (i + 1 < rows.size()) {
                         List<Text.Line> nextRow = rows.get(i + 1);
-                        // Sprawdzamy czy nextRow nie jest przypadkiem dniami tygodnia
+                        boolean hasDayName = false;
+                        for (Text.Line line : row) {
+                            String lText = line.getText().toLowerCase();
+                            if (lText.matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tue|wed|thu|fri|sat|sun).*")) {
+                                hasDayName = true;
+                                break;
+                            }
+                        }
                         boolean isDaysRow = false;
                         for (Text.Line nl : nextRow) {
                             if (nl.getText().toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday).*")) {
@@ -223,7 +232,6 @@ public class OcrScheduleParser implements ScheduleParser {
                             }
                         }
                         if (!isDaysRow && nextRow.size() > 2) {
-                            Log.d(TAG, "Wiersz ról to index " + i + ", bierzemy wiersz imion z indexu " + (i + 1));
                             namesRow = nextRow;
                         }
                     }
@@ -232,14 +240,12 @@ public class OcrScheduleParser implements ScheduleParser {
             }
         }
 
-        // KROK 3: Fallback z namesRow
         if (namesRow != null && targetUserElement == null) {
             warnings.add(new ParserWarning(ParserWarning.Type.UNKNOWN_NAME, "Nie znaleziono imienia " + targetUserName + ". Wybrano pierwszą osobę."));
             for (Text.Line line : namesRow) {
                 String text = line.getText().trim().toLowerCase();
-                if (!text.isEmpty() && !text.contains("godz") && !text.matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|august|lipiec).*")) {
+                if (!text.isEmpty() && !text.contains("godz") && !text.matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|wednesday|thursday|friday|saturday|sunday|august|lipiec).*")) {
                     targetUserElement = line;
-                    Log.d(TAG, "Fallback: wybrano -> " + text);
                     break;
                 }
             }
@@ -252,15 +258,50 @@ public class OcrScheduleParser implements ScheduleParser {
             throw new IllegalArgumentException("Nie wykryto struktury tabeli ani żadnego imienia w zdjęciu grafiku.");
         }
 
+        int namesRowIndex = rows.indexOf(namesRow);
+        List<Text.Line> roleRow = (namesRowIndex > 0) ? rows.get(namesRowIndex - 1) : new ArrayList<>();
+
+        Map<Text.Line, String> uniqueNamesMap = new HashMap<>();
+        Map<String, Integer> nameCounts = new HashMap<>();
+        
         for (Text.Line nameElement : namesRow) {
             String nameStr = nameElement.getText().trim();
             if (!nameStr.isEmpty() && !nameStr.toLowerCase().contains("godz") && nameStr.length() > 2) {
+                
+                // Szukamy roli dla tego imienia w wierszu wyżej
+                String roleSuffix = "";
+                int minDiff = Integer.MAX_VALUE;
+                for (Text.Line roleCell : roleRow) {
+                    if (roleCell.getBoundingBox() == null || nameElement.getBoundingBox() == null) continue;
+                    int diff = Math.abs(roleCell.getBoundingBox().centerX() - nameElement.getBoundingBox().centerX());
+                    if (diff < minDiff && diff < 200) { // Tolerancja dopasowania w kolumnie
+                        minDiff = diff;
+                        String roleText = roleCell.getText().toLowerCase();
+                        if (roleText.contains("team leader") || roleText.contains("tl")) {
+                            roleSuffix = " (TL)";
+                        } else if (roleText.contains("manager") || roleText.contains("menadżer") || roleText.contains("kierownik")) {
+                            roleSuffix = " (Manager)";
+                        } else if (roleText.contains("z-ca") || roleText.contains("zastępca") || roleText.contains("deputy")) {
+                            roleSuffix = " (Deputy)";
+                        }
+                    }
+                }
+                
+                // Doklej rolę
+                nameStr = nameStr + roleSuffix;
+
+                // Sprawdź duplikaty po doklejeniu roli (np. jeśli byłoby dwóch "Kacper (TL)")
+                int count = nameCounts.getOrDefault(nameStr, 0) + 1;
+                nameCounts.put(nameStr, count);
+                if (count > 1) {
+                    nameStr = nameStr + " (" + count + ")"; // Np. Kacper (TL) (2)
+                }
+                uniqueNamesMap.put(nameElement, nameStr);
                 foundNames.add(nameStr);
                 scheduleByName.put(nameStr, new ArrayList<>());
             }
         }
 
-        // Iteracja po rzędach dni (szukamy rzędów zaczynających się od numeru dnia 1..31)
         int lastDayNum = 0;
         for (List<Text.Line> row : rows) {
             if (row.isEmpty()) continue;
@@ -272,123 +313,176 @@ public class OcrScheduleParser implements ScheduleParser {
             int parsedNumber = -1;
             try {
                 if (firstCell.matches(".*\\d.*")) {
-                    parsedNumber = Integer.parseInt(firstCell.replaceAll("[^0-9]", ""));
+                    String[] parts = firstCell.split("[^0-9]+");
+                    for (String part : parts) {
+                        if (!part.isEmpty()) {
+                            int candidate = Integer.parseInt(part);
+                            if (candidate >= 1 && candidate <= 31) {
+                                parsedNumber = candidate;
+                                break;
+                            }
+                        }
+                    }
+                    if (parsedNumber < 0) {
+                        parsedNumber = Integer.parseInt(firstCell.replaceAll("[^0-9]", ""));
+                    }
                 } else if (secondCell.matches(".*\\d.*")) {
-                    parsedNumber = Integer.parseInt(secondCell.replaceAll("[^0-9]", ""));
+                    String[] parts = secondCell.split("[^0-9]+");
+                    for (String part : parts) {
+                        if (!part.isEmpty()) {
+                            int candidate = Integer.parseInt(part);
+                            if (candidate >= 1 && candidate <= 31) {
+                                parsedNumber = candidate;
+                                break;
+                            }
+                        }
+                    }
+                    if (parsedNumber < 0) {
+                        parsedNumber = Integer.parseInt(secondCell.replaceAll("[^0-9]", ""));
+                    }
                 }
-            } catch (Exception ignored) {}
-
+            } catch (NumberFormatException e) {}
+            
             boolean hasDayName = firstCell.toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*") ||
                                  secondCell.toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*");
 
-            if (parsedNumber > lastDayNum && parsedNumber <= 31) {
+            if (parsedNumber == lastDayNum + 1) {
                 dayNum = parsedNumber;
             } else if (hasDayName) {
-                // OCR zjadł numer dnia, ale jest nazwa dnia tygodnia
+                // Skoro to jest nazwa dnia, to po prostu wchodzimy w kolejny wiersz siatki kalendarza!
+                // Olej błędy OCR (np. OCR wyczytał '25' zamiast '23' w '23 Sunday').
                 dayNum = lastDayNum + 1;
+            } else if (parsedNumber > lastDayNum && parsedNumber <= 31) {
+                dayNum = parsedNumber;
             }
             
             if (dayNum < 1 || dayNum > 31) continue;
-            
-            // Zabezpieczenie przed losowymi numerami (np. suma godzin na dole)
-            if (dayNum - lastDayNum > 5 && !hasDayName && lastDayNum != 0) {
-                Log.d(TAG, "Ignoruję fałszywy dzień: " + dayNum + " (za duży przeskok i brak nazwy dnia)");
-                continue;
-            }
-
+            // Zabezpieczenie przed losowymi numerami z sumowania
+            // Dzień musi rosnąć (nie może być mniejszy niż poprzedni o ile to nie z nazwy dnia, chociaż nazwa podbija lastDayNum + 1)
+            // I nie może urosnąć o więcej niż 5.
+            if ((dayNum - lastDayNum > 5 || dayNum < lastDayNum) && !hasDayName && lastDayNum != 0) continue;
             lastDayNum = dayNum;
 
             String dateStr = String.format(Locale.US, "%04d-%02d-%02d", currentYear, monthValue, dayNum);
-            if (!allDates.contains(dateStr)) {
-                allDates.add(dateStr);
-            }
+            if (!allDates.contains(dateStr)) allDates.add(dateStr);
 
             List<String> coworkersForDay = new ArrayList<>();
 
-            // Przypisywanie zmian do pracowników na podstawie współrzędnych X
-            for (Text.Line nameEl : namesRow) {
-                if (nameEl.getBoundingBox() == null) continue;
-                int nameCenterX = nameEl.getBoundingBox().centerX();
-                
-                // Znajdź blok tekstu z godzinami w tym samym rzędzie, który jest najbliżej centerX imienia
-                Text.Line bestMatch = null;
-                int minDiff = Integer.MAX_VALUE;
-                for (Text.Line cellEl : row) {
-                    if (cellEl.getBoundingBox() == null) continue;
-                    int cellCenterX = cellEl.getBoundingBox().centerX();
-                    int diff = Math.abs(cellCenterX - nameCenterX);
-                    if (diff < minDiff && diff < 150) { // Tolerancja 150 pikseli (zależy od rozdzielczości)
-                        minDiff = diff;
-                        bestMatch = cellEl;
-                    }
+            List<MatchPair> matches = new ArrayList<>();
+            for (Text.Line cellEl : row) {
+                String cText = cellEl.getText().trim();
+                if (cText.equals(firstCell) || cText.equals(secondCell) || cText.toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tue|wed|thu|fri|sat|sun).*")) {
+                    continue;
                 }
-
-                if (bestMatch != null) {
-                    String rawText = bestMatch.getText();
-                    NewFormatExcelParser.ParsedShiftInfo info = shiftParser.parseShiftText(rawText);
-
-                    if (info.isShift) {
-                        String empName = nameEl.getText().trim();
-                        GlobalShift gs = new GlobalShift(empName, dateStr, info.startTime, info.endTime, info.category);
-                        gs.setManuallyEdited(false);
-                        allGlobalShifts.add(gs);
-                        
-                        if (!empName.equalsIgnoreCase(targetUserElement.getText().trim())) {
-                            if (!coworkersForDay.contains(empName)) coworkersForDay.add(empName);
+                for (Text.Line nameEl : namesRow) {
+                    if (cellEl.getBoundingBox() != null && nameEl.getBoundingBox() != null) {
+                        int diff = Math.abs(cellEl.getBoundingBox().centerX() - nameEl.getBoundingBox().centerX());
+                        if (diff < 150) {
+                            matches.add(new MatchPair(nameEl, cellEl, diff));
                         }
                     }
                 }
             }
+            
+            Collections.sort(matches, (a, b) -> Integer.compare(a.diff, b.diff));
+            Map<Text.Line, List<Text.Line>> personToCells = new HashMap<>();
+            Set<Text.Line> usedCells = new HashSet<>();
+            
+            for (MatchPair match : matches) {
+                if (!usedCells.contains(match.cell)) {
+                    usedCells.add(match.cell);
+                    personToCells.computeIfAbsent(match.person, k -> new ArrayList<>()).add(match.cell);
+                }
+            }
 
-            // Target user shift
-            if (targetUserElement != null && targetUserElement.getBoundingBox() != null) {
-                int targetCenterX = targetUserElement.getBoundingBox().centerX();
-                Text.Line bestMatch = null;
-                int minDiff = Integer.MAX_VALUE;
-                for (Text.Line cellEl : row) {
-                    if (cellEl.getBoundingBox() == null) continue;
-                    int cellCenterX = cellEl.getBoundingBox().centerX();
-                    int diff = Math.abs(cellCenterX - targetCenterX);
-                    if (diff < minDiff && diff < 150) {
-                        minDiff = diff;
-                        bestMatch = cellEl;
-                    }
+            for (Text.Line nameEl : namesRow) {
+                List<Text.Line> assigned = personToCells.get(nameEl);
+                if (assigned == null || assigned.isEmpty()) continue;
+
+                Collections.sort(assigned, (a, b) -> {
+                    if (a.getBoundingBox() == null || b.getBoundingBox() == null) return 0;
+                    return Integer.compare(a.getBoundingBox().centerX(), b.getBoundingBox().centerX());
+                });
+
+                StringBuilder fullText = new StringBuilder();
+                int sumDiff = 0;
+                for (Text.Line c : assigned) {
+                    fullText.append(c.getText().trim()).append(" ");
+                    sumDiff += Math.abs(c.getBoundingBox().centerX() - nameEl.getBoundingBox().centerX());
+                }
+                
+                String rawText = fullText.toString().trim();
+                NewFormatExcelParser.ParsedShiftInfo info = shiftParser.parseShiftText(rawText);
+                String empName = uniqueNamesMap.containsKey(nameEl) ? uniqueNamesMap.get(nameEl) : nameEl.getText().trim();
+                boolean isTargetUser = (nameEl == targetUserElement);
+
+                // Diagnostyka: loguj rawText dla użytkownika oraz dla każdego kto dostał WOLNE
+                if (isTargetUser && !info.isShift) {
+                    Log.d(TAG, "[" + dateStr + "] KACPER WOLNE — rawText='" + rawText + "'");
+                } else if (isTargetUser) {
+                    Log.d(TAG, "[" + dateStr + "] Kacper zmiana: '" + rawText + "' → " + info.startTime + "-" + info.endTime);
                 }
 
-                if (bestMatch != null) {
-                    Log.d(TAG, "Dla dnia " + dateStr + " dopasowano komórkę: [" + bestMatch.getText() + "] (diff: " + minDiff + ")");
-                    NewFormatExcelParser.ParsedShiftInfo info = shiftParser.parseShiftText(bestMatch.getText());
-                    Log.d(TAG, "-> Parsowanie komórki [" + bestMatch.getText() + "] zwróciło isShift=" + info.isShift);
-                    if (info.isShift) {
+                if (info.isShift) {
+                    GlobalShift gs = new GlobalShift(empName, dateStr, info.startTime, info.endTime, info.category);
+                    gs.setManuallyEdited(false);
+                    allGlobalShifts.add(gs);
+
+                    if (isTargetUser) {
                         Shift userShift = new Shift(
                                 dateStr, info.startTime, info.endTime, info.description != null ? info.description : "",
                                 true, false, info.category
                         );
                         userShift.setClosingShift(info.isClosingShift);
-                        if (!coworkersForDay.isEmpty()) {
-                            userShift.setClosingCrew(String.join(", ", coworkersForDay));
-                        }
-                        targetUserShifts.add(userShift);
-                        Log.d(TAG, "-> Zapisano poprawną zmianę: " + info.startTime + " - " + info.endTime);
-
                         
-                        String n = targetUserElement.getText().trim();
-                        if (scheduleByName.containsKey(n)) {
-                            scheduleByName.get(n).add(userShift);
+                        boolean alreadyHasShift = false;
+                        for (Shift s : targetUserShifts) {
+                            if (dateStr.equals(s.getDate())) {
+                                alreadyHasShift = true;
+                                break;
+                            }
+                        }
+                        if (!alreadyHasShift) {
+                            targetUserShifts.add(userShift);
+                            String n = uniqueNamesMap.containsKey(targetUserElement) ? uniqueNamesMap.get(targetUserElement) : targetUserElement.getText().trim();
+                            if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
                         }
                     } else {
-                        Log.d(TAG, "-> Zmiana odrzucona (to nie jest zmiana). Traktowane jako WOLNE.");
-                        Shift userShift = new Shift(
-                                dateStr, "", "", "WOLNE", false, false, "UNKNOWN"
-                        );
-                        targetUserShifts.add(userShift);
-                        String n = targetUserElement.getText().trim();
-                        if (scheduleByName.containsKey(n)) {
-                            scheduleByName.get(n).add(userShift);
-                        }
+                        if (!coworkersForDay.contains(empName)) coworkersForDay.add(empName);
                     }
-                } else {
-                    Log.d(TAG, "Dla dnia " + dateStr + " nie znaleziono żadnej komórki spełniającej warunek diff < 150.");
+                } else if (isTargetUser) {
+                     Shift userShift = new Shift(dateStr, "", "", "WOLNE", false, false, "WOLNE");
+                     targetUserShifts.add(userShift);
+                     String n = uniqueNamesMap.containsKey(targetUserElement) ? uniqueNamesMap.get(targetUserElement) : targetUserElement.getText().trim();
+                     if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
+                }
+            }
+
+            // Jeśli kolumna Kacpra była pusta (OCR nie wychwycił żadnej komórki) →
+            // dodaj WOLNE żeby dzień nie zniknął całkowicie z listy
+            boolean targetUserHasEntryForToday = false;
+            for (Shift s : targetUserShifts) {
+                if (dateStr.equals(s.getDate())) {
+                    targetUserHasEntryForToday = true;
+                    break;
+                }
+            }
+            if (!targetUserHasEntryForToday) {
+                Log.d(TAG, "[" + dateStr + "] KACPER WOLNE — rawText='(brak komórki OCR)'");
+                Shift userShift = new Shift(dateStr, "", "", "WOLNE", false, false, "WOLNE");
+                targetUserShifts.add(userShift);
+                String n = uniqueNamesMap.containsKey(targetUserElement) ? uniqueNamesMap.get(targetUserElement) : targetUserElement.getText().trim();
+                if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
+            }
+            // Po iteracji po wszystkich osobach, uzupełniamy closingCrew dla shift Kacpra
+            if (!coworkersForDay.isEmpty()) {
+                Log.d(TAG, "[" + dateStr + "] Współpracownicy na zmianie: " + String.join(", ", coworkersForDay));
+                for (int si = targetUserShifts.size() - 1; si >= 0; si--) {
+                    if (targetUserShifts.get(si).getDate() != null &&
+                            targetUserShifts.get(si).getDate().equals(dateStr)) {
+                        targetUserShifts.get(si).setClosingCrew(String.join(", ", coworkersForDay));
+                        break;
+                    }
                 }
             }
         }
@@ -404,7 +498,30 @@ public class OcrScheduleParser implements ScheduleParser {
         );
         parseResult.setTargetUserShifts(targetUserShifts);
 
-        Log.d(TAG, "Parsowanie OCR zakończone. Zmiany: " + targetUserShifts.size());
+        int shiftCount = targetUserShifts.size();
+        Log.d(TAG, "============ PODSUMOWANIE PARSOWANIA OCR ============");
+        Log.d(TAG, "Wykryte osoby: " + String.join(", ", foundNames));
+        Log.d(TAG, "Zmiany Kacpra: " + shiftCount);
+        for (int i = 0; i < targetUserShifts.size(); i++) {
+            Shift s = targetUserShifts.get(i);
+            String crew = s.getClosingCrew() != null && !s.getClosingCrew().isEmpty()
+                    ? " | Ekipa: " + s.getClosingCrew() : "";
+            Log.d(TAG, "  " + (i + 1) + ". " + s.getDate() + " " + s.getStartTime() +
+                    "-" + s.getEndTime() + " (" + s.getCategory() + ")" + crew);
+        }
+        Log.d(TAG, "=====================================================");
         return parseResult;
+    }
+
+    private static class MatchPair {
+        Text.Line person;
+        Text.Line cell;
+        int diff;
+
+        MatchPair(Text.Line person, Text.Line cell, int diff) {
+            this.person = person;
+            this.cell = cell;
+            this.diff = diff;
+        }
     }
 }
