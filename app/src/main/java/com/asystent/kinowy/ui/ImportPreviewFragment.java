@@ -113,6 +113,8 @@ public class ImportPreviewFragment extends Fragment {
             viewModel.clearPendingImport();
             if (getParentFragmentManager().getBackStackEntryCount() > 0) {
                 getParentFragmentManager().popBackStack();
+            } else {
+                getParentFragmentManager().beginTransaction().remove(ImportPreviewFragment.this).commit();
             }
         });
 
@@ -123,6 +125,8 @@ public class ImportPreviewFragment extends Fragment {
                 Toast.makeText(requireContext(), "Zatwierdzono import grafiku!", Toast.LENGTH_SHORT).show();
                 if (getParentFragmentManager().getBackStackEntryCount() > 0) {
                     getParentFragmentManager().popBackStack();
+                } else {
+                    getParentFragmentManager().beginTransaction().remove(ImportPreviewFragment.this).commit();
                 }
             }
         });
