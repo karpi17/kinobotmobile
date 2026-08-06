@@ -28,4 +28,7 @@ public interface MonthlyReportDao {
     
     @Query("SELECT * FROM monthly_reports ORDER BY monthYear DESC")
     LiveData<List<MonthlyReport>> getAllReports();
+
+    @Query("SELECT * FROM monthly_reports ORDER BY monthYear DESC")
+    List<MonthlyReport> getAllReportsSync();
 }

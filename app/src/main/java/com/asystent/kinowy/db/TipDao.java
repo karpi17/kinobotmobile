@@ -26,4 +26,6 @@ public interface TipDao {
     @Query("SELECT * FROM tips ORDER BY date DESC")
     LiveData<List<Tip>> getAllTips();
 
+    @Query("SELECT * FROM tips ORDER BY date DESC")
+    List<Tip> getAllTipsSync();
 }

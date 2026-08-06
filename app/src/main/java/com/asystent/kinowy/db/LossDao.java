@@ -36,4 +36,7 @@ public interface LossDao {
 
     @Query("DELETE FROM losses")
     void deleteAll();
+
+    @Query("SELECT * FROM losses ORDER BY date DESC")
+    List<Loss> getAllLossesSync();
 }

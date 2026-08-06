@@ -1,38 +1,46 @@
 package com.asystent.kinowy.ui;
 
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
-
-
 import com.asystent.kinowy.R;
+import com.asystent.kinowy.utils.BackupManager;
 import com.asystent.kinowy.viewmodel.MainViewModel;
 import com.asystent.kinowy.widget.ShiftStackWidgetProvider;
 import com.asystent.kinowy.widget.ShiftWidgetProvider;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.concurrent.Executors;
+
 /**
- * Ekran Profilu — centralne miejsce ustawień użytkownika.
- * <ul>
- *   <li>Imię użytkownika (PREF_USER_NAME) — używane przez widget i parsera Excela</li>
- *   <li>Stawka godzinowa (PREF_HOURLY_RATE) — używana przez kalkulator payroll</li>
- *   <li>Wersja aplikacji</li>
- * </ul>
- *
- * Klucze SharedPreferences są identyczne z tymi w DashboardFragment i FinanceFragment,
- * co zapewnia pełną kompatybilność wsteczną bez migracji danych.
+ * Ekran Profilu — centralne miejsce ustawień użytkownika oraz silnik bezpiecznych zrzutów archiwizacyjnych z dysku i chmur.
  */
 public class ProfileFragment extends Fragment {
+
+    private static final String TAG = "ProfileFragment";
 
     // Klucze SharedPreferences — identyczne jak w DashboardFragment i FinanceFragment
     private static final String PREFS_NAME         = "asystent_kinowy_prefs";
@@ -48,6 +56,23 @@ public class ProfileFragment extends Fragment {
     private TextView          tvSavedRate;
     private TextInputEditText etGoalHours;
     private TextInputEditText etNotifyMinutes;
+
+    private String currentAppVersionName = "v2.9";
+
+    // Rejestratory do bezproblemowej obsługi plików bez potrzeby dręczenia o osobne uprawnienia do pamięci (SAF)
+    private final ActivityResultLauncher<String> createBackupLauncher =
+            registerForActivityResult(new ActivityResultContracts.CreateDocument("application/json"), uri -> {
+                if (uri != null) {
+                    exportBackupToUri(uri);
+                }
+            });
+
+    private final ActivityResultLauncher<String[]> openBackupLauncher =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri != null) {
+                    importBackupFromUri(uri);
+                }
+            });
 
     @Nullable
     @Override
@@ -71,12 +96,11 @@ public class ProfileFragment extends Fragment {
 
         // ── Wersja aplikacji ──────────────────────────────────────────────────
         TextView tvVersion = view.findViewById(R.id.tv_profile_version);
-        String versionName = "?";
         try {
-            versionName = requireContext().getPackageManager()
+            currentAppVersionName = requireContext().getPackageManager()
                     .getPackageInfo(requireContext().getPackageName(), 0).versionName;
         } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {}
-        tvVersion.setText("KinoBot v" + versionName);
+        tvVersion.setText("KinoBot v" + currentAppVersionName);
 
         // ── Wczytaj zapisane wartości ─────────────────────────────────────────
         SharedPreferences prefs = requireContext()
@@ -88,29 +112,107 @@ public class ProfileFragment extends Fragment {
         }
 
         float savedRate = prefs.getFloat(PREF_HOURLY_RATE, 0f);
-        // Zawsze inicjalizuj ViewModel stawką — Finance payroll tego wymaga
         viewModel.setHourlyRate(savedRate);
         if (savedRate > 0f) {
             etHourlyRate.setText(String.valueOf(savedRate));
             showSavedRateLabel(savedRate);
         }
 
-        // ── Zapis imienia ─────────────────────────────────────────────────────
         view.findViewById(R.id.btn_save_name).setOnClickListener(v -> saveName(prefs));
 
-        // ── Cel godzinowy ─────────────────────────────────────────────────────
         int savedGoal = prefs.getInt(PREF_MONTHLY_GOAL, 100);
         etGoalHours.setText(String.valueOf(savedGoal));
-        viewModel.getMonthlyHoursGoal().setValue(savedGoal); // inicjalizuj Dashboard progress
+        viewModel.getMonthlyHoursGoal().setValue(savedGoal);
         view.findViewById(R.id.btn_profile_save_goal).setOnClickListener(v -> saveGoal(prefs));
 
-        // ── Czas powiadomienia ────────────────────────────────────────────────
         int savedNotify = prefs.getInt(PREF_NOTIFY_BEFORE, 30);
         etNotifyMinutes.setText(String.valueOf(savedNotify));
         view.findViewById(R.id.btn_profile_save_notify).setOnClickListener(v -> saveNotify(prefs));
 
-        // ── Zapis stawki ──────────────────────────────────────────────────────
         view.findViewById(R.id.btn_profile_save_rate).setOnClickListener(v -> saveRate(prefs));
+
+        // ── Kopie zapasowe (JSON) ─────────────────────────────────────────────
+        view.findViewById(R.id.btn_export_backup).setOnClickListener(v -> {
+            String defaultFileName = "kinobot_backup_" + new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()) + ".json";
+            createBackupLauncher.launch(defaultFileName);
+        });
+
+        view.findViewById(R.id.btn_import_backup).setOnClickListener(v -> {
+            // Wsparcie dla plikowych przeglądarek z dysku lokalnego oraz widoków z Dysku Google
+            openBackupLauncher.launch(new String[]{"application/json", "*/*"});
+        });
+    }
+
+    private void exportBackupToUri(Uri uri) {
+        Toast.makeText(requireContext(), "⌛ Trwa tworzenie zrzutu JSON...", Toast.LENGTH_SHORT).show();
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                BackupManager manager = new BackupManager(requireContext());
+                String jsonContent = manager.createBackupJsonSync(currentAppVersionName);
+
+                try (OutputStream os = requireContext().getContentResolver().openOutputStream(uri)) {
+                    if (os != null) {
+                        os.write(jsonContent.getBytes(StandardCharsets.UTF_8));
+                        os.flush();
+                    }
+                }
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> 
+                        Toast.makeText(requireContext(), "🎉 Kopia zapasowa bezpiecznie zapisana!", Toast.LENGTH_LONG).show()
+                    );
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Awaria eksportu do pliku z powziętą kopią: " + e.getMessage(), e);
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> 
+                        Toast.makeText(requireContext(), "❌ Błąd zapisu pliku: " + e.getLocalizedMessage(), Toast.LENGTH_LONG).show()
+                    );
+                }
+            }
+        });
+    }
+
+    private void importBackupFromUri(Uri uri) {
+        Toast.makeText(requireContext(), "⌛ Trwa analiza pliku i odsiew duplikatów...", Toast.LENGTH_SHORT).show();
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try {
+                StringBuilder sb = new StringBuilder();
+                try (InputStream is = requireContext().getContentResolver().openInputStream(uri);
+                     BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line).append("\n");
+                    }
+                }
+
+                BackupManager manager = new BackupManager(requireContext());
+                BackupManager.RestoreSummary summary = manager.restoreBackupFromJsonSync(sb.toString());
+
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        new MaterialAlertDialogBuilder(requireContext())
+                                .setTitle(summary.isSuccess() ? "Raport ze Zrzutu Kopii" : "Awaria Importu")
+                                .setMessage(summary.toUserFriendlySummary())
+                                .setPositiveButton("Gotowe!", (d, w) -> d.dismiss())
+                                .setCancelable(false)
+                                .show();
+
+                        if (summary.isSuccess()) {
+                            // Natychmiastowe obudzenie i przestylizowanie żyjących widgetów z ekranu powtarzalnego
+                            ShiftWidgetProvider.triggerUpdate(requireContext());
+                            ShiftStackWidgetProvider.triggerUpdate(requireContext());
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Koszmar przy wybudzaniu archiwum JSON ze strumienia: " + e.getMessage(), e);
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> 
+                        Toast.makeText(requireContext(), "❌ Awaria odczytu archiwum z wyboru: " + e.getLocalizedMessage(), Toast.LENGTH_LONG).show()
+                    );
+                }
+            }
+        });
     }
 
     // ── Logika zapisu ─────────────────────────────────────────────────────────
@@ -123,7 +225,6 @@ public class ProfileFragment extends Fragment {
         }
         prefs.edit().putString(PREF_USER_NAME, name).apply();
         viewModel.setTargetUserName(name); // natychmiastowa synchronizacja z ViewModel
-        // Odśwież oba widgety — które czytają imię z SharedPrefs do filtrowania ekipy
         ShiftWidgetProvider.triggerUpdate(requireContext());
         ShiftStackWidgetProvider.triggerUpdate(requireContext());
         Toast.makeText(requireContext(), "✅ Imię zapisane: " + name, Toast.LENGTH_SHORT).show();
@@ -141,7 +242,7 @@ public class ProfileFragment extends Fragment {
             if (rate <= 0f) throw new NumberFormatException();
 
             prefs.edit().putFloat(PREF_HOURLY_RATE, rate).apply();
-            viewModel.setHourlyRate(rate);          // natychmiastowy update payrollu
+            viewModel.setHourlyRate(rate);
             showSavedRateLabel(rate);
             Toast.makeText(requireContext(),
                     "✅ Stawka zapisana: " + rate + " PLN/h",

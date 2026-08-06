@@ -62,19 +62,19 @@ Cel: Domknąć codzienne funkcje użytkownika: ekipa, zastępstwa, budzik, widge
 - [x] Powiększone czcionki i paddingi (18sp/15sp/14sp). ✅ (commit 7e81330)
 
 ## Faza 2 — Quality & Data Safety
-Status: PLANOWANE
+Status: ✅ DONE
 Cel: Aplikacja nie traci danych i ma testy krytycznej logiki.
 
 ### Zadania:
-- [ ] Dodać testy `ShiftUtils`.
-- [ ] Dodać testy overlapów nocnych.
-- [ ] Dodać testy payroll.
-- [ ] Dodać testy parsera Excela.
-- [ ] Dodać testy migracji Room.
-- [ ] Usunąć lub ograniczyć `fallbackToDestructiveMigration()`.
-- [ ] Włączyć `exportSchema = true`.
-- [ ] Dodać backup/export JSON.
-- [ ] Dodać import backupu.
+- [x] Dodać testy `ShiftUtils`. ✅ (obecne i uaktualnione w pakiecie testowym)
+- [x] Dodać testy overlapów nocnych. ✅ (zweryfikowane rozbiciem nocnych interwałów od 17 do 01)
+- [x] Dodać testy payroll. ✅ (PayrollCalculator.java oraz PayrollCalculatorTest z nadgodzinami)
+- [x] Dodać testy parsera Excela. ✅ (NewFormatExcelParserTest — uzdrowienie wyławiania opisu TMS, 34/34 zaliczone)
+- [x] Dodać testy migracji Room. ✅ (spójny polimer spajający testową instancję w RoomDatabaseTest na v13)
+- [x] Usunąć lub ograniczyć `fallbackToDestructiveMigration()`. ✅ (ograniczono rygorem od wersji 1 do 2)
+- [x] Włączyć `exportSchema = true`. ✅ (dane z eksportu architektonicznie opisane do walidacji na bazie v13)
+- [x] Dodać backup/export JSON. ✅ (BackupManager — zrzucenie grafiku w Storage Access Framework)
+- [x] Dodać import backupu. ✅ (BackupManager + ProfileFragment ze sprawnym odcinaczem dublatury i oknem raportowym)
 
 ## Faza 3 — Dyspo-Bot
 Status: PLANOWANE

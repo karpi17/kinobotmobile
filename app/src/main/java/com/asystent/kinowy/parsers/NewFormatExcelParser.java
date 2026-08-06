@@ -263,13 +263,17 @@ public class NewFormatExcelParser implements ScheduleParser {
         String[] monthsPl = {"styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
                 "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień"};
 
-        for (int r = 0; r <= 3; r++) {
+        // Skanujemy szerszy obszar (5 wierszy x 15 kolumn) żeby nie pominąć
+        // nagłówków jak "August 160" w scalonej komórce lub dalszej kolumnie
+        for (int r = 0; r <= 4; r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
-            for (int c = 0; c <= 5; c++) {
+            for (int c = 0; c < Math.min(row.getLastCellNum() + 1, 15); c++) {
                 String text = getCellValueAsString(row.getCell(c)).toLowerCase();
+                if (text.isEmpty()) continue;
                 for (int m = 0; m < 12; m++) {
                     if (text.contains(monthsEn[m]) || text.contains(monthsPl[m])) {
+                        Log.d(TAG, "Wykryto miesiąc " + (m + 1) + " w tekście: '" + text + "' (wiersz " + r + ", kol " + c + ")");
                         return m + 1;
                     }
                 }
@@ -285,46 +289,113 @@ public class NewFormatExcelParser implements ScheduleParser {
 
         if (nameRow == null) return result;
 
+        // Zbierz zakresy scalonych komórek żeby poprawnie odczytywać wartości
+        // (Apache POI zwraca wartość tylko dla pierwszej komórki w scalonym zakresie)
+        java.util.List<org.apache.poi.ss.util.CellRangeAddress> mergedRegions = sheet.getMergedRegions();
+
         String currentPosition = "";
-        for (int c = 0; c < nameRow.getLastCellNum(); c++) {
+        int lastCol = nameRow.getLastCellNum();
+        // Uwzględnij też kolumny z wiersza pozycji (row 0) — może być dłuższy
+        if (posRow != null && posRow.getLastCellNum() > lastCol) {
+            lastCol = posRow.getLastCellNum();
+        }
+
+        for (int c = 0; c < lastCol; c++) {
             if (posRow != null) {
-                String posStr = getCellValueAsString(posRow.getCell(c));
+                String posStr = getMergedCellValue(posRow, c, mergedRegions);
                 if (!posStr.trim().isEmpty() && !posStr.equalsIgnoreCase("godz")) {
                     currentPosition = posStr.trim();
                 }
             }
 
-            String nameStr = getCellValueAsString(nameRow.getCell(c)).trim();
-            if (!nameStr.isEmpty() && !nameStr.equalsIgnoreCase("godz") && !nameStr.equalsIgnoreCase("Manager")
-                    && !nameStr.equalsIgnoreCase("Deputy Manager") && !nameStr.equalsIgnoreCase("Team Leader")) {
+            String nameStr = getMergedCellValue(nameRow, c, mergedRegions).trim();
+
+            // Filtrujemy:
+            // 1. Puste komórki
+            // 2. Nagłówki ról (stanowisk)
+            // 3. Komórki z samymi cyframi (kolumny "godz" jak "8", "12", "32")
+            // 4. "godz"
+            if (nameStr.isEmpty()) continue;
+            if (nameStr.equalsIgnoreCase("godz")) continue;
+            if (nameStr.equalsIgnoreCase("Manager")) continue;
+            if (nameStr.equalsIgnoreCase("Deputy Manager")) continue;
+            if (nameStr.equalsIgnoreCase("Team Leader")) continue;
+            if (nameStr.matches("^\\d+([.,]\\d+)?$")) continue; // czysto liczbowe → kolumna godz
+
+            result.add(new EmployeeHeader(c, nameStr, currentPosition));
+            Log.d(TAG, "Znaleziono pracownika: " + nameStr + " (" + currentPosition + ") kol=" + c);
+        }
+
+        if (result.isEmpty()) {
+            Log.w(TAG, "parseEmployeeHeaders: 0 pracowników! Próbuję odczyt bez filtrowania scalonych komórek...");
+            // Fallback: bezpośredni odczyt bez merged-cell resolve
+            for (int c = 0; c < nameRow.getLastCellNum(); c++) {
+                String nameStr = getCellValueAsString(nameRow.getCell(c)).trim();
+                if (nameStr.isEmpty() || nameStr.equalsIgnoreCase("godz")
+                        || nameStr.equalsIgnoreCase("Manager")
+                        || nameStr.equalsIgnoreCase("Deputy Manager")
+                        || nameStr.equalsIgnoreCase("Team Leader")
+                        || nameStr.matches("^\\d+([.,]\\d+)?$")) continue;
                 result.add(new EmployeeHeader(c, nameStr, currentPosition));
             }
         }
         return result;
     }
 
+    /**
+     * Odczytuje wartość komórki uwzględniając scalone zakresy (merged cells).
+     * Jeśli komórka jest częścią scalonego zakresu, zwraca wartość z komórki-źródłowej (lewy-górny róg).
+     */
+    private String getMergedCellValue(Row row, int colIndex, java.util.List<org.apache.poi.ss.util.CellRangeAddress> mergedRegions) {
+        String direct = getCellValueAsString(row.getCell(colIndex));
+        if (!direct.isEmpty()) return direct;
+
+        // Sprawdź czy ta komórka jest częścią scalonego zakresu
+        int rowIndex = row.getRowNum();
+        for (org.apache.poi.ss.util.CellRangeAddress region : mergedRegions) {
+            if (region.isInRange(rowIndex, colIndex)) {
+                // Pobierz wartość z pierwszej komórki scalenia
+                Row firstRow = row.getSheet().getRow(region.getFirstRow());
+                if (firstRow != null) {
+                    return getCellValueAsString(firstRow.getCell(region.getFirstColumn()));
+                }
+            }
+        }
+        return "";
+    }
+
     private EmployeeHeader findTargetUserColumn(List<EmployeeHeader> employees, String targetUserName, String targetRole) {
         if (targetUserName == null || targetUserName.isEmpty()) targetUserName = "Kacper";
         String lowerTarget = targetUserName.toLowerCase();
 
-        if (targetRole != null && !targetRole.isEmpty()) {
+        Log.d(TAG, "Szukam kolumny dla: '" + targetUserName + "' rola='" + targetRole + "' wśród " + employees.size() + " pracowników");
+        for (EmployeeHeader e : employees) {
+            Log.d(TAG, "  Kandydat: '" + e.name + "' pos='" + e.position + "' kol=" + e.colIndex);
+        }
+
+        // 1. Priorytet: dokładna rola z ustawień (jeśli ustawiona przez użytkownika)
+        if (targetRole != null && !targetRole.isEmpty() && !targetRole.equalsIgnoreCase("Dowolna (Automatycznie)")) {
             for (EmployeeHeader emp : employees) {
                 if (emp.position.equalsIgnoreCase(targetRole) && emp.name.toLowerCase().contains(lowerTarget)) {
+                    Log.d(TAG, "Dopasowano po roli z ustawień: " + emp.name + " (" + emp.position + ")");
                     return emp;
                 }
             }
         }
 
-        // Szukamy pod stanowiskiem Team Leader jako domyślnie
+        // 2. Szukamy: Team Leader (najczęstsza historycznie rola Kacpra)
         for (EmployeeHeader emp : employees) {
             if (emp.position.equalsIgnoreCase("Team Leader") && emp.name.toLowerCase().contains(lowerTarget)) {
+                Log.d(TAG, "Dopasowano po Team Leader: " + emp.name);
                 return emp;
             }
         }
 
-        // Dopasowanie ogólne po imieniu
+        // 3. Jeśli grafik się zmienił i Kacper jest teraz Deputy Manager / Manager — szukamy po samym imieniu
+        // To jest kluczowy fallback gdy rola zmienia się między miesiącami!
         for (EmployeeHeader emp : employees) {
             if (emp.name.toLowerCase().contains(lowerTarget)) {
+                Log.d(TAG, "Dopasowano po imieniu (rola: " + emp.position + "): " + emp.name);
                 return emp;
             }
         }
@@ -372,8 +443,8 @@ public class NewFormatExcelParser implements ScheduleParser {
                      .replaceAll("\\b0ff\\b", "off")
                      .replaceAll("\\bof\\b", "off");   // "8 of" → "8 off"
 
-        // Zaktualizuj text na podstawie lower
-        text = lower;
+        // Używamy ujednoliconego ciągu obniżonych liter do wyszukiwań regex
+        String originalText = rawText.trim();
 
         // Skrót TMS + open → traktuj jako open
         if (lower.contains("open") && lower.contains("tms")) {
@@ -396,7 +467,7 @@ public class NewFormatExcelParser implements ScheduleParser {
             int startHour = Integer.parseInt(closeOdMatcher.group(1));
             int startMin = closeOdMatcher.group(2) != null ? Integer.parseInt(closeOdMatcher.group(2)) : 0;
             String startTime = String.format(Locale.US, "%02d:%02d", startHour, startMin);
-            return new ParsedShiftInfo(startTime, "01:00", true, text, "ZAMEK");
+            return new ParsedShiftInfo(startTime, "01:00", true, originalText, "ZAMEK");
         }
 
         // 2b. open do HH (np. "open do 16", "open do 15:30")
@@ -405,11 +476,11 @@ public class NewFormatExcelParser implements ScheduleParser {
             int endHour = Integer.parseInt(openDoMatcher.group(1));
             int endMin = openDoMatcher.group(2) != null ? Integer.parseInt(openDoMatcher.group(2)) : 0;
             String endTime = String.format(Locale.US, "%02d:%02d", endHour, endMin);
-            return new ParsedShiftInfo("09:00", endTime, false, text, "OBSŁUGA");
+            return new ParsedShiftInfo("09:00", endTime, false, originalText, "OBSŁUGA");
         }
 
         // 2c. Zakres HH-HH (np. "14-22", "12.30-20.30", "10/18", "8 12-20 8", "TMS paczki 17–22")
-        Matcher rangeMatcher = RANGE_PATTERN.matcher(text);
+        Matcher rangeMatcher = RANGE_PATTERN.matcher(originalText);
         if (rangeMatcher.find()) {
             int startHour = Integer.parseInt(rangeMatcher.group(1));
             int startMin = rangeMatcher.group(2) != null ? Integer.parseInt(rangeMatcher.group(2)) : 0;
@@ -423,7 +494,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                 String startTime = String.format(Locale.US, "%02d:%02d", startHour, startMin);
                 String endTime = String.format(Locale.US, "%02d:%02d", endHour, endMin);
                 boolean isClosing = endHour <= 5 || endHour >= 23;
-                String desc = text.replace(rangeMatcher.group(0), "").trim();
+                String desc = (originalText.substring(0, rangeMatcher.start()) + originalText.substring(rangeMatcher.end())).trim();
                 String category = isClosing ? "ZAMEK" : "OBSŁUGA";
                 if (lower.contains("tms")) category = "INNE (TMS)";
                 return new ParsedShiftInfo(startTime, endTime, isClosing, desc, category);

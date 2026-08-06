@@ -118,7 +118,14 @@ public class ExcelParsingService implements ScheduleParser {
 
         if (options != null && options.getTargetUserName() != null && !options.getTargetUserName().isEmpty()) {
             List<Shift> userShifts = parseScheduleFromParsedResult(legacyResult, options.getTargetUserName());
-            unifiedResult.setTargetUserShifts(userShifts);
+            if (!userShifts.isEmpty()) {
+                unifiedResult.setTargetUserShifts(userShifts);
+            } else {
+                // Tryb obserwatora: imię użytkownika nie istnieje w tym grafiku.
+                // Zamiast pustego wyniku, zwróć wszystkich jako "ekipę" bez wyróżnionego użytkownika.
+                Log.w(TAG, "Tryb obserwatora: brak imienia '" + options.getTargetUserName() + "' w starym grafiku. Wyświetlam ekipy wszystkich pracowników.");
+                // targetUserShifts pozostaje null - ImportPreviewFragment powinien wyświetlić wszystkich pracowników
+            }
         }
 
         return unifiedResult;

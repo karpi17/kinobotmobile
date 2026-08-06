@@ -150,4 +150,7 @@ public interface GlobalShiftDao {
             insertAll(safeToInsert);
         }
     }
+
+    @Query("SELECT * FROM global_shifts WHERE is_deleted = 0 ORDER BY date ASC, start_time ASC")
+    List<GlobalShift> getAllGlobalShiftsSync();
 }
