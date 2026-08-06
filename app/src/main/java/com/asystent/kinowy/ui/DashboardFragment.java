@@ -83,14 +83,44 @@ public class DashboardFragment extends Fragment {
                 String mimeType = requireContext().getContentResolver().getType(uri);
                 String path = uri.getPath() != null ? uri.getPath().toLowerCase() : "";
 
+                // Pobierz rzeczywistą nazwę pliku z ContentResolver (dokładniejsza niż URI path)
+                String displayName = "";
+                try (android.database.Cursor cursor = requireContext().getContentResolver().query(
+                        uri, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        displayName = cursor.getString(0).toLowerCase();
+                    }
+                } catch (Exception ignored) {}
+
+                Log.d(TAG, "parseFileUri: mimeType='" + mimeType + "' path='" + path + "' displayName='" + displayName + "'");
+
+                // UWAGA: Sprawdzamy rozszerzenie rzeczywistej nazwy pliku jako PIERWSZE kryterium.
+                // ContentResolver na Androidzie może zwrócić błędny MIME type (np. image/* dla .xlsx z Google Drive).
+                boolean isExcel = displayName.endsWith(".xlsx") || displayName.endsWith(".xls")
+                        || path.endsWith(".xlsx") || path.endsWith(".xls")
+                        || (mimeType != null && (mimeType.contains("spreadsheet") || mimeType.contains("excel") || mimeType.contains("xlsx") || mimeType.contains("xls")));
+
+                boolean isImage = !isExcel && (
+                        displayName.endsWith(".jpg") || displayName.endsWith(".jpeg") || displayName.endsWith(".png")
+                        || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".png")
+                        || (mimeType != null && mimeType.startsWith("image/")));
+
+                boolean isPdf = !isExcel && (displayName.endsWith(".pdf") || path.endsWith(".pdf")
+                        || (mimeType != null && mimeType.contains("pdf")));
+
                 com.asystent.kinowy.parsers.ScheduleParser parser;
-                if ((mimeType != null && (mimeType.contains("image") || mimeType.contains("jpg") || mimeType.contains("png")))
-                        || path.endsWith(".jpg") || path.endsWith(".png") || path.endsWith(".jpeg")) {
-                    parser = new com.asystent.kinowy.parsers.OcrScheduleParser();
-                } else if ((mimeType != null && mimeType.contains("pdf")) || path.endsWith(".pdf")) {
+                if (isExcel) {
+                    Log.d(TAG, "Wybrano parser: AutoDetectExcelParser (Excel)");
+                    parser = new com.asystent.kinowy.parsers.AutoDetectExcelParser();
+                } else if (isPdf) {
+                    Log.d(TAG, "Wybrano parser: PdfScheduleParser (PDF)");
                     parser = new com.asystent.kinowy.parsers.PdfScheduleParser();
+                } else if (isImage) {
+                    Log.d(TAG, "Wybrano parser: OcrScheduleParser (Image)");
+                    parser = new com.asystent.kinowy.parsers.OcrScheduleParser();
                 } else {
-                    // Automatyczna detekcja formatu (stary vs nowy)
+                    // Ostateczny fallback – próbuj Excela
+                    Log.w(TAG, "Nieznany typ pliku – fallback do AutoDetectExcelParser");
                     parser = new com.asystent.kinowy.parsers.AutoDetectExcelParser();
                 }
 
@@ -113,6 +143,7 @@ public class DashboardFragment extends Fragment {
             }
         });
     }
+
 
     @Nullable
     @Override
