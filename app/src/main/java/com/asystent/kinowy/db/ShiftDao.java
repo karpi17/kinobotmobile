@@ -34,8 +34,15 @@ public interface ShiftDao {
     @Query("SELECT * FROM shifts WHERE id = :id LIMIT 1")
     Shift getShiftById(int id);
 
+    @Query("SELECT * FROM shifts WHERE date = :date ORDER BY id ASC")
+    List<Shift> getShiftsByDateSync(String date);
+
+    @Query("DELETE FROM shifts WHERE date = :date AND isManual = 0")
+    int deleteNonManualShiftsForDate(String date);
+
     @Query("DELETE FROM shifts")
     void deleteAll();
+
 
     /**
      * Pobiera wszystkie zmiany synchronicznie (bez LiveData).

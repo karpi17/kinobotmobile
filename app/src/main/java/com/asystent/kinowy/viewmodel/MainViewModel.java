@@ -794,29 +794,53 @@ public class MainViewModel extends AndroidViewModel {
                     }
                 }
 
-                // 3. Zmiany użytkownika
+                // 3. Zmiany użytkownika — UPSERT per-date
+                // Reguła: dla każdej daty z nowego grafiku:
+                //   a) jeśli istnieje zmiana z isManual=true → chroniona, pomijamy (ręczne wpisy nienaruszalne)
+                //   b) jeśli istnieje zmiana z isManual=false → kasujemy starą, wstawiamy nową
+                //   c) zmiana → wolne: kasujemy starą zmianę (nowe wolne nie jest wstawiane do bazy)
+                //   d) wolne → zmiana: wstawiamy nową zmianę
                 List<Shift> userShifts = parseResult.getTargetUserShifts();
                 int addedCount = 0;
                 int skippedCount = 0;
 
                 if (userShifts != null && !userShifts.isEmpty()) {
-                    if (safeMode) {
-                        for (Shift s : userShifts) {
-                            if (s.getStartTime() == null || s.getStartTime().isEmpty() || s.getEndTime() == null || s.getEndTime().isEmpty()) {
-                                continue; // Ignoruj wolne dni
-                            }
-                            shiftRepository.insert(s);
+                    for (Shift incoming : userShifts) {
+                        String date = incoming.getDate();
+                        if (date == null || date.isEmpty()) continue;
+
+                        // Sprawdź istniejące wpisy na tę datę
+                        List<Shift> existing = shiftRepository.getShiftsByDateSync(date);
+
+                        // Sprawdź czy jest jakakolwiek zmiana ręczna - jeśli tak, pomijamy całkowicie
+                        boolean hasManual = false;
+                        for (Shift e : existing) {
+                            if (e.isManual()) { hasManual = true; break; }
+                        }
+                        if (hasManual) {
+                            Log.d(TAG, "[import upsert] " + date + " - pomijam (ręczna zmiana chroniona)");
+                            skippedCount++;
+                            continue;
+                        }
+
+                        boolean incomingIsShift = incoming.getStartTime() != null && !incoming.getStartTime().isEmpty()
+                                && incoming.getEndTime() != null && !incoming.getEndTime().isEmpty();
+
+                        if (!existing.isEmpty()) {
+                            // Kasujemy wszystkie nieręczne wpisy na tę datę
+                            shiftRepository.deleteNonManualShiftsForDate(date);
+                            Log.d(TAG, "[import upsert] " + date + " - usunięto " + existing.size() + " starych wpisów");
+                        }
+
+                        if (incomingIsShift) {
+                            // Wstawiamy nową zmianę (zmiana→zmiana lub wolne→zmiana)
+                            shiftRepository.insertSync(incoming);
                             addedCount++;
+                            Log.d(TAG, "[import upsert] " + date + " - wstawiono " + incoming.getStartTime() + "-" + incoming.getEndTime());
+                        } else {
+                            // Nowy wpis to WOLNE - stara zmiana już skasowana, wolne nie potrzebuje wpisu w bazie
+                            Log.d(TAG, "[import upsert] " + date + " - WOLNE (skasowano starą, brak wpisu)");
                         }
-                    } else {
-                        List<Shift> validShifts = new ArrayList<>();
-                        for (Shift s : userShifts) {
-                            if (s.getStartTime() != null && !s.getStartTime().isEmpty() && s.getEndTime() != null && !s.getEndTime().isEmpty()) {
-                                validShifts.add(s);
-                            }
-                        }
-                        processAndMergeAllShifts(validShifts);
-                        addedCount = validShifts.size();
                     }
                 }
 

@@ -132,4 +132,32 @@ public class ShiftRepository {
     public void deleteAll() {
         executor.execute(shiftDao::deleteAll);
     }
+
+    // ─── Metody synchroniczne (wywoływać TYLKO z wątku w tle) ────────────────
+
+    /**
+     * Wstawia zmianę synchronicznie (blokująco) — używać wyłącznie z wątku Executor.
+     * Używane podczas importu grafiku gdzie potrzebujemy kontrolować kolejność operacji.
+     */
+    public void insertSync(Shift shift) {
+        shiftDao.insert(shift);
+    }
+
+    /**
+     * Pobiera synchronicznie wszystkie zmiany na podany dzień.
+     * Wywoływać tylko z wątku w tle (np. Executor).
+     */
+    public List<Shift> getShiftsByDateSync(String date) {
+        return shiftDao.getShiftsByDateSync(date);
+    }
+
+    /**
+     * Kasuje synchronicznie wszystkie nieręczne zmiany na podany dzień.
+     * Wywoływać tylko z wątku w tle (np. Executor).
+     *
+     * @return liczba usuniętych wierszy
+     */
+    public int deleteNonManualShiftsForDate(String date) {
+        return shiftDao.deleteNonManualShiftsForDate(date);
+    }
 }
