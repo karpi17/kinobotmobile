@@ -151,6 +151,9 @@ public interface GlobalShiftDao {
         }
     }
 
+    @Query("DELETE FROM global_shifts WHERE date = :date AND is_manually_edited = 0")
+    void deleteNonManualGlobalShiftsForDate(String date);
+
     @Query("SELECT * FROM global_shifts WHERE is_deleted = 0 ORDER BY date ASC, start_time ASC")
     List<GlobalShift> getAllGlobalShiftsSync();
 }

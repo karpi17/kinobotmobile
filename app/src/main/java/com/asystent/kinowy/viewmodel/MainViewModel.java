@@ -781,6 +781,14 @@ public class MainViewModel extends AndroidViewModel {
             try {
                 // 1. Zapis zmian ekipy
                 List<GlobalShift> globalShifts = parseResult.getAllGlobalShifts();
+                List<String> importedDates = parseResult.getAllDates();
+                
+                if (importedDates != null) {
+                    for (String d : importedDates) {
+                        globalShiftDao.deleteNonManualGlobalShiftsForDate(d);
+                    }
+                }
+                
                 if (globalShifts != null && !globalShifts.isEmpty()) {
                     globalShiftDao.insertAllSafe(globalShifts);
                     Log.d(TAG, "Zapisano globalne zmiany (safe): " + globalShifts.size());
