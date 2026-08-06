@@ -235,13 +235,33 @@ public class ExcelParsingService implements ScheduleParser {
 
         try (Workbook workbook = new XSSFWorkbook(excelFileStream)) {
 
+            // --- 1. Znajdź poprawne daty z arkuszy (naprawa błędu Menedżera kopiującego stare arkusze) ---
+            Map<Integer, String> bestColToDate = new LinkedHashMap<>();
+            java.time.LocalDate maxDate = java.time.LocalDate.MIN;
+            java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+            for (int s = 0; s < workbook.getNumberOfSheets(); s++) {
+                Sheet sheet = workbook.getSheetAt(s);
+                if (sheet.getPhysicalNumberOfRows() < ROW_DATA_START) continue;
+                Map<Integer, String> colToDate = readDateHeaders(sheet);
+                if (!colToDate.isEmpty()) {
+                    try {
+                        String firstDateStr = colToDate.values().iterator().next();
+                        java.time.LocalDate firstDate = java.time.LocalDate.parse(firstDateStr, fmt);
+                        if (firstDate.isAfter(maxDate)) {
+                            maxDate = firstDate;
+                            bestColToDate = colToDate;
+                        }
+                    } catch (Exception e) {}
+                }
+            }
+            allDates.addAll(bestColToDate.values());
+
             for (int s = 0; s < workbook.getNumberOfSheets(); s++) {
                 Sheet sheet = workbook.getSheetAt(s);
                 if (sheet.getPhysicalNumberOfRows() < ROW_DATA_START) continue;
 
-                // --- 1. Odczytaj daty z wiersza ROW_DATES_IDX ---
-                Map<Integer, String> colToDate = readDateHeaders(sheet);
-                allDates.addAll(colToDate.values());
+                Map<Integer, String> colToDate = bestColToDate;
 
                 // --- 2. Iteracja po wierszach pracowników ---
                 for (int rowIdx = ROW_DATA_START; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
@@ -442,9 +462,9 @@ public class ExcelParsingService implements ScheduleParser {
         // Kategoryzacja zmian
         String category = "UNKNOWN";
         String typUpper = typ.trim().toUpperCase();
-        if (typUpper.matches(".*\\bBAR\\b.*")) {
+        if (typUpper.matches(".*\\bBAR\\b.*") || typUpper.matches(".*\\bMARATON\\b.*")) {
             category = "BAR";
-        } else if (typUpper.matches(".*\\bOW\\b.*") || typUpper.matches(".*\\bSP\\b.*")) {
+        } else if (typUpper.matches(".*\\bOW\\b.*") || typUpper.matches(".*\\bSP\\b.*") || typUpper.matches(".*\\bTEL\\b.*")) {
             category = "OW";
         }
 
