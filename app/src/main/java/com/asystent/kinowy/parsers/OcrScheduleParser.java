@@ -53,6 +53,11 @@ public class OcrScheduleParser implements ScheduleParser {
             throw new IllegalArgumentException("Nie można odczytać obrazu z podanego pliku.");
         }
 
+        // Preprocessing przed OCR: ML Kit wymaga min ~30px wysokości tekstu.
+        // WhatsApp mocno kompresuje zdjęcia (225kB, 1205x741 → tekst ~15px).
+        // Skalujemy obraz 2.5x jeśli tekst może być za mały.
+        bitmap = preprocessBitmapForOcr(bitmap);
+
         InputImage image = InputImage.fromBitmap(bitmap, 0);
         TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
         
@@ -528,5 +533,64 @@ public class OcrScheduleParser implements ScheduleParser {
             this.cell = cell;
             this.diff = diff;
         }
+    }
+
+    /**
+     * Preprocessing bitmpy przed OCR:
+     * 1. Skaluje obraz jeśli tekst jest za mały dla ML Kit (poniżej ~750px wysokości = wiersze grafiku ~20px każdy)
+     * 2. Zwiększa kontrast żeby poprawić wykrywalność tekstu na skompresowanych zdjęciach (WhatsApp, Telegram)
+     *
+     * ML Kit Latin OCR działa optymalnie gdy tekst ma min 30-40px wysokości.
+     * WhatsApp 225kB zdjęcie 1205x741 → tekst ~15px → za mały.
+     * Po skalowaniu 2.5x → 3012x1852 → tekst ~37px → w zakresie dobrego OCR.
+     */
+    private static Bitmap preprocessBitmapForOcr(Bitmap original) {
+        int w = original.getWidth();
+        int h = original.getHeight();
+
+        // Szacujemy wysokość wiersza: grafik ma ~30+ wierszy, więc wys. wiersza ≈ h / 32
+        // Przy h=741 → ~23px. ML Kit potrzebuje min ~30px. Skalujemy do h=1850 (skala ~2.5x).
+        float scale = 1.0f;
+        int targetH = 1850;
+        if (h < targetH) {
+            scale = (float) targetH / h;
+        }
+
+        // Nie skalujemy jeśli obraz jest już wystarczająco duży
+        if (scale <= 1.05f) {
+            Log.d(TAG, "Preprocessing OCR: obraz wystarczająco duży (" + w + "x" + h + "), brak skalowania.");
+            return original;
+        }
+
+        // Ogranicz maksymalny rozmiar do 4000px szerokości żeby nie wybuchnąć pamięcią
+        int newW = (int)(w * scale);
+        int newH = (int)(h * scale);
+        if (newW > 4000) {
+            scale = 4000f / w;
+            newW = 4000;
+            newH = (int)(h * scale);
+        }
+
+        Log.d(TAG, "Preprocessing OCR: skaluję " + w + "x" + h + " → " + newW + "x" + newH + " (x" + String.format("%.1f", scale) + ")");
+
+        Bitmap scaled = Bitmap.createScaledBitmap(original, newW, newH, true);
+
+        // Zwiększenie kontrastu przez ColorMatrix (kontrast x1.4, jasność -20)
+        android.graphics.Bitmap result = Bitmap.createBitmap(newW, newH, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(result);
+        android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+        float contrast = 1.4f;
+        float brightness = -30f;
+        cm.set(new float[]{
+            contrast, 0, 0, 0, brightness,
+            0, contrast, 0, 0, brightness,
+            0, 0, contrast, 0, brightness,
+            0, 0, 0, 1, 0
+        });
+        android.graphics.Paint paint = new android.graphics.Paint();
+        paint.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
+        canvas.drawBitmap(scaled, 0, 0, paint);
+
+        return result;
     }
 }
