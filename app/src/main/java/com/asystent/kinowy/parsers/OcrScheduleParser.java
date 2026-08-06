@@ -165,18 +165,19 @@ public class OcrScheduleParser implements ScheduleParser {
         }
 
         if (!nameCandidates.isEmpty()) {
-            if (nameCandidates.size() == 1 || targetRole == null || targetRole.isEmpty()) {
+            if (nameCandidates.size() == 1) {
                 targetUserElement = nameCandidates.get(0);
                 namesRow = rowCandidates.get(0);
-                Log.d(TAG, "Wybrano pierwsze/jedyne dopasowanie imienia: " + targetUserElement.getText());
+                Log.d(TAG, "Wybrano jedyne dopasowanie imienia: " + targetUserElement.getText());
             } else {
-                Log.d(TAG, "Znaleziono wiele osób o imieniu " + targetUserName + ". Szukam roli: " + targetRole);
+                // Wiele osób o tym samym imieniu.
+                // Priorytet: 1. explicit targetRole, 2. Team Leader, 3. Manager/Deputy, 4. pierwszy z brzegu
+                String roleToSearch = (targetRole != null && !targetRole.isEmpty()) ? targetRole : "team leader";
+                Log.d(TAG, "Znaleziono " + nameCandidates.size() + " os\u00f3b o imieniu " + targetUserName + ". Szukam roli: " + roleToSearch);
                 for (int i = 0; i < nameCandidates.size(); i++) {
                     Text.Line candidate = nameCandidates.get(i);
                     List<Text.Line> cRow = rowCandidates.get(i);
                     int rowIndex = rows.indexOf(cRow);
-                    
-                    // Szukamy roli w wierszu wyżej
                     if (rowIndex > 0) {
                         List<Text.Line> roleRow = rows.get(rowIndex - 1);
                         Text.Line bestRole = null;
@@ -189,20 +190,41 @@ public class OcrScheduleParser implements ScheduleParser {
                                 bestRole = roleCell;
                             }
                         }
-                        if (bestRole != null && bestRole.getText().toLowerCase().contains(targetRole.toLowerCase())) {
+                        if (bestRole != null && bestRole.getText().toLowerCase().contains(roleToSearch.toLowerCase())) {
                             targetUserElement = candidate;
                             namesRow = cRow;
-                            Log.d(TAG, "Dopasowano osobę na podstawie roli: " + bestRole.getText());
+                            Log.d(TAG, "Dopasowano osob\u0119 na podstawie roli '" + roleToSearch + "': " + bestRole.getText());
                             break;
                         }
                     }
                 }
-                
-                // Fallback jeśli żadna rola nie pasowała idealnie
+                // Fallback 2: jeśli Team Leader nie znaleziony, spróbuj podaną explicit rolę (lub Deputy Manager)
+                if (targetUserElement == null && targetRole != null && !targetRole.isEmpty()) {
+                    for (int i = 0; i < nameCandidates.size(); i++) {
+                        Text.Line candidate = nameCandidates.get(i);
+                        List<Text.Line> cRow = rowCandidates.get(i);
+                        int rowIndex = rows.indexOf(cRow);
+                        if (rowIndex > 0) {
+                            List<Text.Line> roleRow = rows.get(rowIndex - 1);
+                            for (Text.Line roleCell : roleRow) {
+                                if (roleCell.getBoundingBox() == null || candidate.getBoundingBox() == null) continue;
+                                int diff = Math.abs(roleCell.getBoundingBox().centerX() - candidate.getBoundingBox().centerX());
+                                if (diff < 200 && roleCell.getText().toLowerCase().contains(targetRole.toLowerCase())) {
+                                    targetUserElement = candidate;
+                                    namesRow = cRow;
+                                    Log.d(TAG, "Fallback: dopasowano na podstawie explicit roli '" + targetRole + "'");
+                                    break;
+                                }
+                            }
+                        }
+                        if (targetUserElement != null) break;
+                    }
+                }
+                // Fallback 3: bierzemy pierwszego
                 if (targetUserElement == null) {
                     targetUserElement = nameCandidates.get(0);
                     namesRow = rowCandidates.get(0);
-                    Log.d(TAG, "Żadna rola nie pasowała idealnie, wybrano pierwszą osobę z brzegu.");
+                    Log.d(TAG, "\u017badna rola nie pasowa\u0142a, fallback na pierwsz\u0105 osob\u0119: " + targetUserElement.getText());
                 }
             }
         }

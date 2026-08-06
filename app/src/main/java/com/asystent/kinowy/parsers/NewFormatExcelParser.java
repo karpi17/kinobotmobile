@@ -480,7 +480,8 @@ public class NewFormatExcelParser implements ScheduleParser {
         }
 
         // 2c. Zakres HH-HH (np. "14-22", "12.30-20.30", "10/18", "8 12-20 8", "TMS paczki 17–22")
-        Matcher rangeMatcher = RANGE_PATTERN.matcher(originalText);
+        // UWAGA: matchujemy na 'lower' (po autokorekcie "--" → "-") żeby obsłużyć zapis OCR "12--20"
+        Matcher rangeMatcher = RANGE_PATTERN.matcher(lower);
         if (rangeMatcher.find()) {
             int startHour = Integer.parseInt(rangeMatcher.group(1));
             int startMin = rangeMatcher.group(2) != null ? Integer.parseInt(rangeMatcher.group(2)) : 0;
