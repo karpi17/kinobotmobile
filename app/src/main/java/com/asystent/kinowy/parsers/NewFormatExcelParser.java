@@ -253,7 +253,16 @@ public class NewFormatExcelParser implements ScheduleParser {
         );
         result.setTargetUserShifts(targetUserShifts);
 
-        Log.d(TAG, "Parsowanie zakończone sukcesem. Parsowano " + targetUserShifts.size() + " zmian użytkownika.");
+        Log.d(TAG, "============ PODSUMOWANIE PARSOWANIA EXCEL ============");
+        Log.d(TAG, "Wykryte osoby (" + employees.size() + "): " + foundNames.toString());
+        Log.d(TAG, "Zmiany użytkownika: " + targetUserShifts.size());
+        for (int i = 0; i < targetUserShifts.size(); i++) {
+            Shift s = targetUserShifts.get(i);
+            String ekipa = s.getClosingCrew() != null ? s.getClosingCrew() : "Brak danych";
+            Log.d(TAG, "  " + (i + 1) + ". " + s.getDate() + " " + s.getStartTime() + "-" + s.getEndTime() + " (" + s.getCategory() + ") | Ekipa: " + ekipa);
+        }
+        Log.d(TAG, "=======================================================");
+
         return result;
     }
 

@@ -119,20 +119,25 @@ public class AutoDetectExcelParser implements ScheduleParser {
 
         // --- Sygnały NOWEGO formatu (odejmujemy) ---
 
-        // Sygnał: wiersz 0 zawiera stanowiska → nowy format
-        Row row0 = sheet.getRow(0);
-        if (row0 != null) {
-            for (int c = 0; c < Math.min(row0.getLastCellNum(), 15); c++) {
-                Cell cell = row0.getCell(c);
-                if (cell != null && cell.getCellType() == CellType.STRING) {
-                    String v = cell.getStringCellValue().toLowerCase();
-                    if (v.contains("team leader") || v.contains("manager") || v.contains("obsługa")) {
-                        score -= 3;
-                        Log.d(TAG, "Sygnał -3: stanowisko w wierszu 0 (nowy format): " + v);
-                        break;
+        // Sygnał: pierwsze 6 wierszy zawiera stanowiska → nowy format
+        boolean hasRoles = false;
+        for (int r = 0; r <= 5; r++) {
+            Row row = sheet.getRow(r);
+            if (row != null) {
+                for (int c = 0; c < Math.min(row.getLastCellNum(), 15); c++) {
+                    Cell cell = row.getCell(c);
+                    if (cell != null && cell.getCellType() == CellType.STRING) {
+                        String v = cell.getStringCellValue().toLowerCase();
+                        if (v.contains("team leader") || v.contains("manager") || v.contains("obsługa")) {
+                            score -= 5; // mocny sygnał nowego formatu
+                            Log.d(TAG, "Sygnał -5: stanowisko w wierszu " + r + " (nowy format): " + v);
+                            hasRoles = true;
+                            break;
+                        }
                     }
                 }
             }
+            if (hasRoles) break;
         }
 
         // Sygnał: kolumna 0, wiersze 2-5 zawiera cyfry 1-31 (numer dnia) → nowy format
