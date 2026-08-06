@@ -64,6 +64,11 @@ public class OcrScheduleParser implements ScheduleParser {
             allLines.addAll(block.getLines());
         }
 
+        Log.d(TAG, "OCR wyodrębnił " + allLines.size() + " linii z obrazu (wymiary: " + bitmap.getWidth() + "x" + bitmap.getHeight() + "):");
+        for (int idx = 0; idx < allLines.size(); idx++) {
+            Log.d(TAG, "  [OCR Line " + idx + "] '" + allLines.get(idx).getText() + "' bbox: " + allLines.get(idx).getBoundingBox());
+        }
+
         // 2. Sortowanie po Y (z góry na dół)
         allLines.sort((l1, l2) -> {
             if (l1.getBoundingBox() == null || l2.getBoundingBox() == null) return 0;
@@ -205,7 +210,7 @@ public class OcrScheduleParser implements ScheduleParser {
                 boolean hasRole = false;
                 for (Text.Line line : row) {
                     String text = line.getText().trim().toLowerCase();
-                    if (text.contains("team leader") || text.contains("manager") || text.contains("kasa") || text.contains("obsługa")) {
+                    if (text.contains("team leader") || text.contains("leader") || text.contains("manager") || text.contains("deputy") || text.equals("tl") || text.equals("dm") || text.contains("kasa") || text.contains("obsługa")) {
                         hasRole = true;
                         break;
                     }
