@@ -480,7 +480,9 @@ public class OcrScheduleParser implements ScheduleParser {
                             if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
                         }
                     } else {
-                        if (!coworkersForDay.contains(empName)) coworkersForDay.add(empName);
+                        if (info.isClosingShift) {
+                            if (!coworkersForDay.contains(empName)) coworkersForDay.add(empName);
+                        }
                     }
                 } else if (isTargetUser) {
                      Shift userShift = new Shift(dateStr, "", "", "WOLNE", false, false, "WOLNE");
@@ -508,11 +510,13 @@ public class OcrScheduleParser implements ScheduleParser {
             }
             // Po iteracji po wszystkich osobach, uzupełniamy closingCrew dla shift Kacpra
             if (!coworkersForDay.isEmpty()) {
-                Log.d(TAG, "[" + dateStr + "] Współpracownicy na zmianie: " + String.join(", ", coworkersForDay));
+                Log.d(TAG, "[" + dateStr + "] Współpracownicy na zmianie zamykającej: " + String.join(", ", coworkersForDay));
                 for (int si = targetUserShifts.size() - 1; si >= 0; si--) {
                     if (targetUserShifts.get(si).getDate() != null &&
                             targetUserShifts.get(si).getDate().equals(dateStr)) {
-                        targetUserShifts.get(si).setClosingCrew(String.join(", ", coworkersForDay));
+                        if (targetUserShifts.get(si).isClosingShift()) {
+                            targetUserShifts.get(si).setClosingCrew(String.join(", ", coworkersForDay));
+                        }
                         break;
                     }
                 }

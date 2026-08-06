@@ -177,8 +177,8 @@ public class NewFormatExcelParser implements ScheduleParser {
                     gs.setManuallyEdited(false);
                     allGlobalShifts.add(gs);
 
-                    // Jeśli to nie sam użytkownik, dodajemy imię do ekipy z tego dnia
-                    if (!emp.name.equalsIgnoreCase(targetUserCol.name)) {
+                    // Jeśli to nie sam użytkownik i też zamyka, dodajemy imię do ekipy zamykającej
+                    if (!emp.name.equalsIgnoreCase(targetUserCol.name) && info.isClosingShift) {
                         if (!coworkersForDay.contains(emp.name)) {
                             coworkersForDay.add(emp.name);
                         }
@@ -217,9 +217,11 @@ public class NewFormatExcelParser implements ScheduleParser {
                 );
                 userShift.setClosingShift(info.isClosingShift);
 
-                List<String> coworkers = dailyCrewMap.get(dateStr);
-                if (coworkers != null && !coworkers.isEmpty()) {
-                    userShift.setClosingCrew(String.join(", ", coworkers));
+                if (info.isClosingShift) {
+                    List<String> coworkers = dailyCrewMap.get(dateStr);
+                    if (coworkers != null && !coworkers.isEmpty()) {
+                        userShift.setClosingCrew(String.join(", ", coworkers));
+                    }
                 }
 
                 targetUserShifts.add(userShift);
