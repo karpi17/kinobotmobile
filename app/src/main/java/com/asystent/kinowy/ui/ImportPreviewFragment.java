@@ -122,6 +122,7 @@ public class ImportPreviewFragment extends Fragment {
             ScheduleParseResult result = viewModel.getPendingImport().getValue();
             if (result != null) {
                 viewModel.commitImport(result, true);
+                viewModel.clearPendingImport();
                 Toast.makeText(requireContext(), "Zatwierdzono import grafiku!", Toast.LENGTH_SHORT).show();
                 if (getParentFragmentManager().getBackStackEntryCount() > 0) {
                     getParentFragmentManager().popBackStack();
