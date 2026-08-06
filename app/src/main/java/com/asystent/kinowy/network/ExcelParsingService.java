@@ -128,6 +128,21 @@ public class ExcelParsingService implements ScheduleParser {
             }
         }
 
+        Log.d(TAG, "============ PODSUMOWANIE PARSOWANIA EXCEL (STARY FORMAT) ============");
+        List<String> names = legacyResult.getFoundNames();
+        Log.d(TAG, "Wykryte osoby (" + (names != null ? names.size() : 0) + "): " + (names != null ? names.toString() : "brak"));
+        List<Shift> userShifts = unifiedResult.getTargetUserShifts();
+        int shiftCount = userShifts != null ? userShifts.size() : 0;
+        Log.d(TAG, "Zmiany użytkownika '" + options.getTargetUserName() + "': " + shiftCount);
+        if (userShifts != null) {
+            for (int i = 0; i < userShifts.size(); i++) {
+                Shift s = userShifts.get(i);
+                String ekipa = s.getClosingCrew() != null ? s.getClosingCrew() : "Brak danych";
+                Log.d(TAG, "  " + (i + 1) + ". " + s.getDate() + " " + s.getStartTime() + "-" + s.getEndTime() + " (" + s.getCategory() + ") | Ekipa: " + ekipa);
+            }
+        }
+        Log.d(TAG, "======================================================================");
+
         return unifiedResult;
     }
 
