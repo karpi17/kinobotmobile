@@ -118,10 +118,13 @@ public class ImportPreviewFragment extends Fragment {
             }
         });
 
+        android.widget.CheckBox cbClearExisting = view.findViewById(R.id.cbClearExisting);
+
         btnConfirmImport.setOnClickListener(v -> {
             ScheduleParseResult result = viewModel.getPendingImport().getValue();
             if (result != null) {
-                viewModel.commitImport(result, true);
+                boolean clearExisting = cbClearExisting.isChecked();
+                viewModel.commitImport(result, true, clearExisting);
                 viewModel.clearPendingImport();
                 Toast.makeText(requireContext(), "Zatwierdzono import grafiku!", Toast.LENGTH_SHORT).show();
                 if (getParentFragmentManager().getBackStackEntryCount() > 0) {

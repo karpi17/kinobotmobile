@@ -775,7 +775,7 @@ public class MainViewModel extends AndroidViewModel {
      * @param parseResult wynik parsowania (Excel, PDF, OCR)
      * @param safeMode    true = dodaje/aktualizuje zmiany chroniąc ręczne wpisy
      */
-    public void commitImport(com.asystent.kinowy.parsers.ScheduleParseResult parseResult, boolean safeMode) {
+    public void commitImport(com.asystent.kinowy.parsers.ScheduleParseResult parseResult, boolean safeMode, boolean clearExisting) {
         if (parseResult == null) return;
         executor.execute(() -> {
             try {
@@ -783,7 +783,7 @@ public class MainViewModel extends AndroidViewModel {
                 List<GlobalShift> globalShifts = parseResult.getAllGlobalShifts();
                 List<String> importedDates = parseResult.getAllDates();
                 
-                if (importedDates != null) {
+                if (clearExisting && importedDates != null) {
                     for (String d : importedDates) {
                         globalShiftDao.deleteNonManualGlobalShiftsForDate(d);
                     }

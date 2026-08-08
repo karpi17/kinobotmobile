@@ -145,6 +145,17 @@
             android:backgroundTint="#FFFFFF"/>
     </LinearLayout>
 
+    <CheckBox
+        android:id="@+id/cbClearExisting"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:checked="true"
+        android:text="Wyczyść stary grafik dla tych dat (odznacz, jeśli chcesz połączyć np. z grafikiem kierowników)"
+        android:textColor="#B0B0B0"
+        android:buttonTint="#2E7D32"
+        android:textSize="13sp" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
