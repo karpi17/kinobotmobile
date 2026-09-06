@@ -541,6 +541,30 @@ public class MainViewModel extends AndroidViewModel {
     }
 
     /**
+     * Sprawdza w tle, czy istnieje już stawka z podaną datą (inny rekord niż edytowany).
+     * Zwraca ewentualny konflikt przez callback na wątku głównym.
+     *
+     * @param toSave     obiekt który chcemy zapisać
+     * @param editing    null lub rekord aktualnie edytowany (jego data nie liczy się jako konflikt)
+     * @param callback   (conflictOrNull) → null = brak konfliktu, non-null = znaleziono duplikat
+     */
+    public void checkAndSaveRateHistory(
+            com.asystent.kinowy.models.RateHistory toSave,
+            @androidx.annotation.Nullable com.asystent.kinowy.models.RateHistory editing,
+            java.util.function.Consumer<com.asystent.kinowy.models.RateHistory> callback) {
+        executor.execute(() -> {
+            com.asystent.kinowy.models.RateHistory existing = rateHistoryDao.getByDate(toSave.getActiveFrom());
+            // Jeśli znaleziony rekord to ten sam, który edytujemy — nie ma konfliktu
+            com.asystent.kinowy.models.RateHistory conflict = null;
+            if (existing != null && (editing == null || existing.getId() != editing.getId())) {
+                conflict = existing;
+            }
+            final com.asystent.kinowy.models.RateHistory finalConflict = conflict;
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> callback.accept(finalConflict));
+        });
+    }
+
+    /**
      * Usuwa wpis z historii stawek.
      */
     public void deleteRateHistory(com.asystent.kinowy.models.RateHistory rateHistory) {

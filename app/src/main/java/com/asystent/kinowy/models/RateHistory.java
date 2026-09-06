@@ -2,6 +2,7 @@ package com.asystent.kinowy.models;
 
 import androidx.room.ColumnInfo;
 import androidx.room.Entity;
+import androidx.room.Index;
 import androidx.room.PrimaryKey;
 
 /**
@@ -10,8 +11,12 @@ import androidx.room.PrimaryKey;
  *
  * Dzięki temu kalkulator może precyzyjnie obliczyć wynagrodzenie
  * za miesiąc z podwyżką w trakcie (np. 31.40 do 8.08, potem 32.80).
+ *
+ * ZASADA: jedna aktywna stawka na jeden dzień (unikalność active_from).
+ * Próba dodania drugiej stawki z tą samą datą zastępuje istniejącą.
  */
-@Entity(tableName = "rate_history")
+@Entity(tableName = "rate_history",
+        indices = {@Index(value = {"active_from"}, unique = true)})
 public class RateHistory {
 
     @PrimaryKey(autoGenerate = true)

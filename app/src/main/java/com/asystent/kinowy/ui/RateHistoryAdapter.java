@@ -18,7 +18,8 @@ import java.util.Locale;
 /**
  * Adapter dla listy historii stawek godzinowych w ProfileFragment.
  * Każdy element pokazuje datę od kiedy obowiązuje stawka i kwotę.
- * Przytrzymanie → usunięcie pozycji (potwierdzenie w ProfileFragment).
+ * Kliknięcie → edycja stawki.
+ * Kliknięcie ikony kosza → usunięcie (potwierdzenie w ProfileFragment).
  */
 public class RateHistoryAdapter extends RecyclerView.Adapter<RateHistoryAdapter.VH> {
 
@@ -26,12 +27,20 @@ public class RateHistoryAdapter extends RecyclerView.Adapter<RateHistoryAdapter.
         void onDelete(RateHistory rate);
     }
 
+    public interface OnEditClickListener {
+        void onEdit(RateHistory rate);
+    }
+
     private final List<RateHistory> rates;
     private final OnDeleteClickListener deleteListener;
+    private final OnEditClickListener editListener;
 
-    public RateHistoryAdapter(List<RateHistory> rates, OnDeleteClickListener deleteListener) {
+    public RateHistoryAdapter(List<RateHistory> rates,
+                              OnDeleteClickListener deleteListener,
+                              OnEditClickListener editListener) {
         this.rates = rates;
         this.deleteListener = deleteListener;
+        this.editListener = editListener;
     }
 
     @NonNull
@@ -55,6 +64,11 @@ public class RateHistoryAdapter extends RecyclerView.Adapter<RateHistoryAdapter.
         } else {
             holder.tvNote.setVisibility(View.GONE);
         }
+
+        // Kliknięcie w cały element — edycja
+        holder.itemView.setOnClickListener(v -> {
+            if (editListener != null) editListener.onEdit(item);
+        });
 
         holder.btnDelete.setOnClickListener(v -> {
             if (deleteListener != null) deleteListener.onDelete(item);

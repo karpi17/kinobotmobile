@@ -16,11 +16,14 @@ import java.util.List;
  * DAO dla historii stawek godzinowych.
  * Kluczowa metoda: {@link #getRateForDate(String)} — zwraca stawkę
  * obowiązującą w danym dniu (ostatnia stawka z activeFrom <= targetDate).
+ *
+ * Strategia: REPLACE — próba wstawienia stawki z tą samą datą co istniejący wpis
+ * spowoduje podmianę (nie duplikat). Unikalność gwarantuje też @Index na encji.
  */
 @Dao
 public interface RateHistoryDao {
 
-    /** Wstawia nowy wpis historii stawki. Ignoruje duplikaty tej samej daty. */
+    /** Wstawia nowy wpis historii stawki. Przy duplikacie daty ZASTĘPUJE istniejący wpis. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insert(RateHistory rateHistory);
 
@@ -31,6 +34,13 @@ public interface RateHistoryDao {
     /** Usuwa wpis historii stawki. */
     @Delete
     void delete(RateHistory rateHistory);
+
+    /**
+     * Zwraca wpis historii stawki dla konkretnej daty (do edycji).
+     * Używane do sprawdzenia, czy dana data już istnieje przed zapisem.
+     */
+    @Query("SELECT * FROM rate_history WHERE active_from = :date LIMIT 1")
+    RateHistory getByDate(String date);
 
     /**
      * Zwraca stawkę godzinową obowiązującą w podanym dniu.

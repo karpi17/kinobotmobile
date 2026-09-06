@@ -328,23 +328,40 @@ public class ProfileFragment extends Fragment {
                                     .setPositiveButton("Usuń", (d, w) -> viewModel.deleteRateHistory(rate))
                                     .setNegativeButton("Anuluj", null)
                                     .show();
-                        }));
+                        },
+                        rate -> showRateDialog(rate)  // edycja po kliknięciu
+                ));
             }
         });
     }
 
     private void showAddRateDialog() {
+        showRateDialog(null);
+    }
+
+    /**
+     * Dialog dodawania lub edycji stawki.
+     * @param existing null = nowa stawka, non-null = edycja istniejącej
+     */
+    private void showRateDialog(@Nullable com.asystent.kinowy.models.RateHistory existing) {
         android.view.View dialogView = android.view.LayoutInflater.from(requireContext())
                 .inflate(R.layout.dialog_add_rate, null);
         TextInputEditText etRate = dialogView.findViewById(R.id.et_rate_value);
         TextInputEditText etDate = dialogView.findViewById(R.id.et_rate_date);
 
-        // Domyslna data: dzisiaj
-        etDate.setText(java.time.LocalDate.now().format(
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+        boolean isEditing = existing != null;
+
+        if (isEditing) {
+            etRate.setText(String.valueOf(existing.getRate()));
+            etDate.setText(existing.getActiveFrom());
+        } else {
+            // Domyslna data: dzisiaj
+            etDate.setText(java.time.LocalDate.now().format(
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+        }
 
         new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("💰 Dodaj zmianę stawki")
+                .setTitle(isEditing ? "✏️ Edytuj stawkę" : "💰 Dodaj zmianę stawki")
                 .setView(dialogView)
                 .setPositiveButton("Zapisz", (d, w) -> {
                     String rateStr = etRate.getText() != null ? etRate.getText().toString().trim() : "";
@@ -356,16 +373,37 @@ public class ProfileFragment extends Fragment {
                     try {
                         float rate = Float.parseFloat(rateStr.replace(",", "."));
                         if (rate <= 0) throw new NumberFormatException();
-
-                        // Walidacja daty
                         java.time.LocalDate.parse(dateStr);
 
                         com.asystent.kinowy.models.RateHistory rh = new com.asystent.kinowy.models.RateHistory(
                                 dateStr, rate, null);
-                        viewModel.addRateHistory(rh);
-                        Toast.makeText(requireContext(),
-                                String.format("✅ Stawka %.2f zł/h od %s zapisana!", rate, dateStr),
-                                Toast.LENGTH_SHORT).show();
+                        if (isEditing) rh.setId(existing.getId());
+
+                        // Sprawdź czy istnieje już stawka z tą datą (inny rekord)
+                        viewModel.checkAndSaveRateHistory(rh, existing, conflict -> {
+                            if (conflict != null && conflict.getId() != rh.getId()) {
+                                // Jest duplikat innego rekordu — zapytaj
+                                new MaterialAlertDialogBuilder(requireContext())
+                                        .setTitle("⚠️ Stawka dla tej daty już istnieje")
+                                        .setMessage(String.format(
+                                                "Stawka %.2f zł/h od %s już istnieje.\nCzy chcesz ją zastąpić nową wartością %.2f zł/h?",
+                                                conflict.getRate(), conflict.getActiveFrom(), rate))
+                                        .setPositiveButton("Zastąp", (d2, w2) -> {
+                                            rh.setId(conflict.getId());
+                                            viewModel.addRateHistory(rh);
+                                            Toast.makeText(requireContext(),
+                                                    String.format("✅ Stawka %.2f zł/h od %s zaktualizowana!", rate, dateStr),
+                                                    Toast.LENGTH_SHORT).show();
+                                        })
+                                        .setNegativeButton("Anuluj", null)
+                                        .show();
+                            } else {
+                                viewModel.addRateHistory(rh);
+                                Toast.makeText(requireContext(),
+                                        String.format("✅ Stawka %.2f zł/h od %s zapisana!", rate, dateStr),
+                                        Toast.LENGTH_SHORT).show();
+                            }
+                        });
                     } catch (NumberFormatException e) {
                         Toast.makeText(requireContext(), "Nieprawidłowa stawka", Toast.LENGTH_SHORT).show();
                     } catch (java.time.format.DateTimeParseException e) {

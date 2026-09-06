@@ -31,10 +31,11 @@ import com.asystent.kinowy.models.ScheduleImportLog;
  *  v8 → v9 : dodano tabelę `global_shifts` (globalny grafik ekipy)
  *  v12 → v13: dodano tabelę `import_log` (historia importów grafików)
  *  v13 → v14: dodano tabelę `rate_history` (historia stawek godzinowych)
+ *  v14 → v15: dodano unikalny indeks na rate_history.active_from (jedna stawka na dzień)
  */
 @Database(
     entities = {Shift.class, Loss.class, Tip.class, MonthlyReport.class, ActiveEmployee.class, GlobalShift.class, ScheduleImportLog.class, RateHistory.class},
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -288,6 +289,44 @@ public abstract class AppDatabase extends RoomDatabase {
     };
 
 
+    /**
+     * v14 → v15
+     * Dodaje unikalny indeks na kolumnie active_from w rate_history.
+     * Gwarantuje zasadę "jedna obowiązująca stawka na jeden dzień".
+     * Przy próbie dodania drugiej stawki z tą samą datą — Room wykona REPLACE.
+     *
+     * UWAGA: SQLite nie obsługuje ALTER INDEX — trzeba upuścić dane
+     * i odtworzyć tabelę ze świeżym indeksem.
+     */
+    public static final Migration MIGRATION_14_15 = new Migration(14, 15) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // 1. Utwórz tabelę tymczasową z unikalnym indeksem
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS `rate_history_new` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`active_from` TEXT, " +
+                "`rate` REAL NOT NULL, " +
+                "`note` TEXT)"
+            );
+            // 2. Przenieś dane — przy duplikatach active_from zachowaj tylko ostatnio wstawiony
+            database.execSQL(
+                "INSERT OR REPLACE INTO rate_history_new (id, active_from, rate, note) " +
+                "SELECT id, active_from, rate, note FROM rate_history " +
+                "ORDER BY id ASC"
+            );
+            // 3. Usuń starą tabelę
+            database.execSQL("DROP TABLE IF EXISTS `rate_history`");
+            // 4. Przemianuj nową na właściwą
+            database.execSQL("ALTER TABLE `rate_history_new` RENAME TO `rate_history`");
+            // 5. Utwórz unikalny indeks
+            database.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_rate_history_active_from` " +
+                "ON `rate_history` (`active_from`)"
+            );
+        }
+    };
+
     // -------------------------------------------------------------------------
     // Singleton
     // -------------------------------------------------------------------------
@@ -311,7 +350,8 @@ public abstract class AppDatabase extends RoomDatabase {
                         MIGRATION_10_11, // v10 → v11 (soft delete)
                         MIGRATION_11_12, // v11 → v12 (alarm budzik)
                         MIGRATION_12_13, // v12 → v13 (historia importu)
-                        MIGRATION_13_14  // v13 → v14 (historia stawek)
+                        MIGRATION_13_14, // v13 → v14 (historia stawek)
+                        MIGRATION_14_15  // v14 → v15 (unikalny indeks na active_from)
                     )
                     // Fallback wyłącznie dla przestarzałych odsłon (v1 i v2) przed uruchomieniem wczesnych archiwizowanych migracji
                     .fallbackToDestructiveMigrationFrom(1, 2)
