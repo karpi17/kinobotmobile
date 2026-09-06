@@ -10,6 +10,7 @@ import com.asystent.kinowy.models.ActiveEmployee;
 import com.asystent.kinowy.models.GlobalShift;
 import com.asystent.kinowy.models.Loss;
 import com.asystent.kinowy.models.MonthlyReport;
+import com.asystent.kinowy.models.RateHistory;
 import com.asystent.kinowy.models.Shift;
 import com.asystent.kinowy.models.Tip;
 
@@ -29,10 +30,11 @@ import com.asystent.kinowy.models.ScheduleImportLog;
  *  v7 → v8 : dodano tabelę `active_employees` (słownik pracowników)
  *  v8 → v9 : dodano tabelę `global_shifts` (globalny grafik ekipy)
  *  v12 → v13: dodano tabelę `import_log` (historia importów grafików)
+ *  v13 → v14: dodano tabelę `rate_history` (historia stawek godzinowych)
  */
 @Database(
-    entities = {Shift.class, Loss.class, Tip.class, MonthlyReport.class, ActiveEmployee.class, GlobalShift.class, ScheduleImportLog.class},
-    version = 13,
+    entities = {Shift.class, Loss.class, Tip.class, MonthlyReport.class, ActiveEmployee.class, GlobalShift.class, ScheduleImportLog.class, RateHistory.class},
+    version = 14,
     exportSchema = true
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -57,6 +59,8 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract GlobalShiftDao globalShiftDao();
 
     public abstract ImportLogDao importLogDao();
+
+    public abstract RateHistoryDao rateHistoryDao();
 
     // -------------------------------------------------------------------------
     // Migracje
@@ -258,6 +262,32 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * v13 → v14
+     * Tworzy tabelę `rate_history` — historia stawek godzinowych.
+     * Pozwala precyzyjnie obliczyć wypłatę przy podwyżce w trakcie miesiąca
+     * (każda zmiana jest mnożona przez stawkę obowiązującą w jej dniu).
+     *
+     * UWAGA: Seed początkowej stawki jest wykonywany przez MainViewModel
+     * przy pierwszym uruchomieniu po migracji (z SharedPreferences).
+     */
+    public static final Migration MIGRATION_13_14 = new Migration(13, 14) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // UWAGA: active_from musi być TEXT (nullable) — bez NOT NULL,
+            // żeby pasować do @ColumnInfo w RateHistory.java (notNull=false domyślnie).
+            // Brak CREATE INDEX — Room nie deklaruje @Index w encji, więc nie może go tu być.
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS `rate_history` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`active_from` TEXT, " +
+                "`rate` REAL NOT NULL, " +
+                "`note` TEXT)"
+            );
+        }
+    };
+
+
     // -------------------------------------------------------------------------
     // Singleton
     // -------------------------------------------------------------------------
@@ -280,7 +310,8 @@ public abstract class AppDatabase extends RoomDatabase {
                         MIGRATION_9_10,  // v9 → v10 (manual override flag)
                         MIGRATION_10_11, // v10 → v11 (soft delete)
                         MIGRATION_11_12, // v11 → v12 (alarm budzik)
-                        MIGRATION_12_13  // v12 → v13 (historia importu)
+                        MIGRATION_12_13, // v12 → v13 (historia importu)
+                        MIGRATION_13_14  // v13 → v14 (historia stawek)
                     )
                     // Fallback wyłącznie dla przestarzałych odsłon (v1 i v2) przed uruchomieniem wczesnych archiwizowanych migracji
                     .fallbackToDestructiveMigrationFrom(1, 2)

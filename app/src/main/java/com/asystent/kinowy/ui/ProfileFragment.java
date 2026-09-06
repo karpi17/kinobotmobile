@@ -47,6 +47,7 @@ public class ProfileFragment extends Fragment {
     private static final String PREF_USER_NAME     = "user_name";
     private static final String PREF_HOURLY_RATE   = "hourly_rate";
     private static final String PREF_MONTHLY_GOAL  = "monthly_hours_goal";
+    private static final String PREF_GOAL_PLN      = "monthly_goal_pln";
     private static final String PREF_NOTIFY_BEFORE = "notify_before_minutes";
 
     private MainViewModel viewModel;
@@ -55,7 +56,11 @@ public class ProfileFragment extends Fragment {
     private TextInputEditText etHourlyRate;
     private TextView          tvSavedRate;
     private TextInputEditText etGoalHours;
+    private TextInputEditText etGoalPLN;
     private TextInputEditText etNotifyMinutes;
+
+    private androidx.recyclerview.widget.RecyclerView rvRateHistory;
+    private android.widget.TextView tvRateHistoryEmpty;
 
     private String currentAppVersionName = "v2.9";
 
@@ -92,7 +97,11 @@ public class ProfileFragment extends Fragment {
         etHourlyRate    = view.findViewById(R.id.et_profile_hourly_rate);
         tvSavedRate     = view.findViewById(R.id.tv_profile_saved_rate);
         etGoalHours     = view.findViewById(R.id.et_profile_goal_hours);
+        etGoalPLN       = view.findViewById(R.id.et_profile_goal_pln);
         etNotifyMinutes = view.findViewById(R.id.et_profile_notify_minutes);
+
+        rvRateHistory     = view.findViewById(R.id.rv_rate_history);
+        tvRateHistoryEmpty = view.findViewById(R.id.tv_rate_history_empty);
 
         // ── Wersja aplikacji ──────────────────────────────────────────────────
         TextView tvVersion = view.findViewById(R.id.tv_profile_version);
@@ -120,9 +129,18 @@ public class ProfileFragment extends Fragment {
 
         view.findViewById(R.id.btn_save_name).setOnClickListener(v -> saveName(prefs));
 
+        // Cel godzinowy
         int savedGoal = prefs.getInt(PREF_MONTHLY_GOAL, 100);
         etGoalHours.setText(String.valueOf(savedGoal));
         viewModel.getMonthlyHoursGoal().setValue(savedGoal);
+
+        // Cel w PLN
+        float savedGoalPLN = prefs.getFloat(PREF_GOAL_PLN, 0f);
+        if (savedGoalPLN > 0) {
+            etGoalPLN.setText(String.valueOf(savedGoalPLN));
+        }
+        viewModel.setMonthlyGoalPLN(savedGoalPLN);
+
         view.findViewById(R.id.btn_profile_save_goal).setOnClickListener(v -> saveGoal(prefs));
 
         int savedNotify = prefs.getInt(PREF_NOTIFY_BEFORE, 30);
@@ -130,6 +148,12 @@ public class ProfileFragment extends Fragment {
         view.findViewById(R.id.btn_profile_save_notify).setOnClickListener(v -> saveNotify(prefs));
 
         view.findViewById(R.id.btn_profile_save_rate).setOnClickListener(v -> saveRate(prefs));
+
+        // Historia stawek
+        setupRateHistory();
+
+        // Przycisk dodania nowej stawki
+        view.findViewById(R.id.btn_add_rate).setOnClickListener(v -> showAddRateDialog());
 
         // ── Kopie zapasowe (JSON) ─────────────────────────────────────────────
         view.findViewById(R.id.btn_export_backup).setOnClickListener(v -> {
@@ -254,20 +278,102 @@ public class ProfileFragment extends Fragment {
 
     private void saveGoal(SharedPreferences prefs) {
         String s = etGoalHours.getText() != null ? etGoalHours.getText().toString().trim() : "";
-        if (TextUtils.isEmpty(s)) {
-            Toast.makeText(requireContext(), "Wpisz cel godzinowy", Toast.LENGTH_SHORT).show();
-            return;
+        String sPlN = etGoalPLN.getText() != null ? etGoalPLN.getText().toString().trim() : "";
+
+        // Zapisz cel godzinowy
+        if (!TextUtils.isEmpty(s)) {
+            try {
+                int goal = Integer.parseInt(s);
+                if (goal > 0) {
+                    prefs.edit().putInt(PREF_MONTHLY_GOAL, goal).apply();
+                    viewModel.getMonthlyHoursGoal().setValue(goal);
+                }
+            } catch (NumberFormatException ignored) {}
         }
-        try {
-            int goal = Integer.parseInt(s);
-            if (goal <= 0) throw new NumberFormatException();
-            prefs.edit().putInt(PREF_MONTHLY_GOAL, goal).apply();
-            viewModel.getMonthlyHoursGoal().setValue(goal);
-            Toast.makeText(requireContext(),
-                    "✅ Cel: " + goal + "h/miesiąc", Toast.LENGTH_SHORT).show();
-        } catch (NumberFormatException e) {
-            Toast.makeText(requireContext(), "Nieprawidłowa wartość", Toast.LENGTH_SHORT).show();
+
+        // Zapisz cel PLN
+        if (!TextUtils.isEmpty(sPlN)) {
+            try {
+                float goalPLN = Float.parseFloat(sPlN.replace(",", "."));
+                if (goalPLN > 0) {
+                    prefs.edit().putFloat(PREF_GOAL_PLN, goalPLN).apply();
+                    viewModel.setMonthlyGoalPLN(goalPLN);
+                    Toast.makeText(requireContext(),
+                            String.format("Cele zapisane! PLN: %.2f zł, h: %s", goalPLN, s),
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            } catch (NumberFormatException ignored) {}
         }
+
+        Toast.makeText(requireContext(), "Cele zapisane!", Toast.LENGTH_SHORT).show();
+    }
+
+    // ── Historia Stawek ────────────────────────────────────────────────────────────
+
+    private void setupRateHistory() {
+        rvRateHistory.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(requireContext()));
+        viewModel.getAllRates().observe(getViewLifecycleOwner(), rates -> {
+            if (rates == null || rates.isEmpty()) {
+                rvRateHistory.setVisibility(android.view.View.GONE);
+                tvRateHistoryEmpty.setVisibility(android.view.View.VISIBLE);
+            } else {
+                rvRateHistory.setVisibility(android.view.View.VISIBLE);
+                tvRateHistoryEmpty.setVisibility(android.view.View.GONE);
+                rvRateHistory.setAdapter(new RateHistoryAdapter(rates,
+                        rate -> {
+                            new MaterialAlertDialogBuilder(requireContext())
+                                    .setTitle("Usuń stawkę?")
+                                    .setMessage(String.format("%.2f zł/h od %s", rate.getRate(), rate.getActiveFrom()))
+                                    .setPositiveButton("Usuń", (d, w) -> viewModel.deleteRateHistory(rate))
+                                    .setNegativeButton("Anuluj", null)
+                                    .show();
+                        }));
+            }
+        });
+    }
+
+    private void showAddRateDialog() {
+        android.view.View dialogView = android.view.LayoutInflater.from(requireContext())
+                .inflate(R.layout.dialog_add_rate, null);
+        TextInputEditText etRate = dialogView.findViewById(R.id.et_rate_value);
+        TextInputEditText etDate = dialogView.findViewById(R.id.et_rate_date);
+
+        // Domyslna data: dzisiaj
+        etDate.setText(java.time.LocalDate.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("💰 Dodaj zmianę stawki")
+                .setView(dialogView)
+                .setPositiveButton("Zapisz", (d, w) -> {
+                    String rateStr = etRate.getText() != null ? etRate.getText().toString().trim() : "";
+                    String dateStr = etDate.getText() != null ? etDate.getText().toString().trim() : "";
+                    if (rateStr.isEmpty() || dateStr.isEmpty()) {
+                        Toast.makeText(requireContext(), "Wypełnij wszystkie pola", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    try {
+                        float rate = Float.parseFloat(rateStr.replace(",", "."));
+                        if (rate <= 0) throw new NumberFormatException();
+
+                        // Walidacja daty
+                        java.time.LocalDate.parse(dateStr);
+
+                        com.asystent.kinowy.models.RateHistory rh = new com.asystent.kinowy.models.RateHistory(
+                                dateStr, rate, null);
+                        viewModel.addRateHistory(rh);
+                        Toast.makeText(requireContext(),
+                                String.format("✅ Stawka %.2f zł/h od %s zapisana!", rate, dateStr),
+                                Toast.LENGTH_SHORT).show();
+                    } catch (NumberFormatException e) {
+                        Toast.makeText(requireContext(), "Nieprawidłowa stawka", Toast.LENGTH_SHORT).show();
+                    } catch (java.time.format.DateTimeParseException e) {
+                        Toast.makeText(requireContext(), "Data musi być w formacie YYYY-MM-DD", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Anuluj", null)
+                .show();
     }
 
     private void saveNotify(SharedPreferences prefs) {

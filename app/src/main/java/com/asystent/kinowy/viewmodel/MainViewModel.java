@@ -71,6 +71,7 @@ public class MainViewModel extends AndroidViewModel {
     private final com.asystent.kinowy.db.EmployeeDao employeeDao;
     private final com.asystent.kinowy.db.GlobalShiftDao globalShiftDao;
     private final com.asystent.kinowy.db.ImportLogDao importLogDao;
+    private final com.asystent.kinowy.db.RateHistoryDao rateHistoryDao;
     private final ExecutorService executor;
 
     // ─── LiveData ────────────────────────────────────────────────────────
@@ -99,9 +100,13 @@ public class MainViewModel extends AndroidViewModel {
 
     private final MutableLiveData<Float> hourlyRateLive;
     private final MutableLiveData<Integer> monthlyHoursGoal;
+    /** Cel finansowy miesiąca w PLN — ustawiany z ProfileFragment. */
+    private final MutableLiveData<Float> monthlyGoalPLN;
     private final MediatorLiveData<PayrollInfo> monthlyPayroll;
     private final MediatorLiveData<List<Loss>> monthlyLosses;
     private final MediatorLiveData<List<Tip>> monthlyTips;
+    /** LiveData z historią stawek (do wyświetlenia na liście w ProfileFragment). */
+    private final LiveData<List<com.asystent.kinowy.models.RateHistory>> allRates;
     private final MutableLiveData<YearMonth> currentSelectedMonth;
 
 
@@ -120,9 +125,11 @@ public class MainViewModel extends AndroidViewModel {
         tipRepository = new TipRepository(application);
         gmailRepository = new GmailRepository();
         excelParsingService = new ExcelParsingService();
-        employeeDao = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).employeeDao();
-        globalShiftDao = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).globalShiftDao();
-        importLogDao = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).importLogDao();
+        com.asystent.kinowy.db.AppDatabase db = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication());
+        employeeDao = db.employeeDao();
+        globalShiftDao = db.globalShiftDao();
+        importLogDao = db.importLogDao();
+        rateHistoryDao = db.rateHistoryDao();
         executor = Executors.newSingleThreadExecutor();
 
         pendingImport = new MutableLiveData<>();
@@ -137,12 +144,32 @@ public class MainViewModel extends AndroidViewModel {
         closingCrewSuggestions = globalShiftDao.getActiveEmployeeNames();
         nextShiftCoworkers = new MediatorLiveData<>();
 
-        // ─── Finanse ─────────────────────────────────────────────────
+        // ─── Finanse ────────────────────────────────────────────────────────
         hourlyRateLive = new MutableLiveData<>(0f);
         monthlyHoursGoal = new MutableLiveData<>(100);
+        monthlyGoalPLN = new MutableLiveData<>(0f);
         monthlyPayroll = new MediatorLiveData<>();
         monthlyLosses = new MediatorLiveData<>();
         monthlyTips = new MediatorLiveData<>();
+        allRates = rateHistoryDao.getAllRates();
+
+        // Seed: jeśli tabela rate_history jest pusta, wstaw bieżącą stawkę z SharedPreferences
+        // jako pierwszy historyczny punkt, żeby stare obliczenia działały poprawnie.
+        executor.execute(() -> {
+            if (rateHistoryDao.countAll() == 0) {
+                android.content.SharedPreferences prefs = application
+                        .getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE);
+                float savedRate = prefs.getFloat("hourly_rate", 0f);
+                if (savedRate > 0) {
+                    // Wstaw stawkę z datą początkową (obejmuje całą historię danych w bazie)
+                    com.asystent.kinowy.models.RateHistory seed = new com.asystent.kinowy.models.RateHistory(
+                            "2020-01-01", savedRate, "Stawka początkowa (migrated)"
+                    );
+                    rateHistoryDao.insert(seed);
+                    Log.d(TAG, "✅ Seed stawki: " + savedRate + " PLN/h od 2020-01-01");
+                }
+            }
+        });
 
         setupNextShiftComputation();
         setupPayrollCalculation();
@@ -159,20 +186,47 @@ public class MainViewModel extends AndroidViewModel {
 
     /**
      * Obiekt podsumowania wypłaty za bieżący miesiąc.
+     * Faza 4: Rozszerzony o informacje o celu finansowym.
      */
+    public static class RateBreakdown {
+        public final float rate;
+        public final double hours;
+        public final double earned;
+        public RateBreakdown(float rate, double hours, double earned) {
+            this.rate = rate; this.hours = hours; this.earned = earned;
+        }
+    }
+
     public static class PayrollInfo {
         private final double totalHours;
-        private final float hourlyRate;
+        private final float hourlyRate;    // ostatnia obowiązująca stawka (do symulacji)
         private final double totalLosses;
         private final double totalTips;
         private final double netPay;
+        private final float goalPLN;       // cel miesiączny w PLN
+        private final int goalProgress;    // procent realizacji celu (0–100)
+        private final double missingPLN;   // ile PLN brakuje do celu
+        private final double missingHours; // ile godzin brakuje do celu
+        private final List<RateBreakdown> breakdown; // rozbicie godzin na stawki
 
-        public PayrollInfo(double totalHours, float hourlyRate, double totalLosses, double totalTips) {
+        public PayrollInfo(double totalHours, float hourlyRate, double totalLosses,
+                           double totalTips, float goalPLN) {
+            this(totalHours, hourlyRate, (totalHours * hourlyRate), totalLosses, totalTips, goalPLN, new java.util.ArrayList<>());
+        }
+
+        /** Konstruktor z wyliczoną sumą (Per-Shift, różne stawki). */
+        public PayrollInfo(double totalHours, float latestRate, double earnedGross,
+                           double totalLosses, double totalTips, float goalPLN, List<RateBreakdown> breakdown) {
             this.totalHours = totalHours;
-            this.hourlyRate = hourlyRate;
+            this.hourlyRate = latestRate;
             this.totalLosses = totalLosses;
             this.totalTips = totalTips;
-            this.netPay = Math.max(0, (totalHours * hourlyRate) - totalLosses) + totalTips;
+            this.netPay = Math.max(0, earnedGross - totalLosses) + totalTips;
+            this.goalPLN = goalPLN;
+            this.goalProgress = com.asystent.kinowy.utils.PayrollCalculator.calculateGoalProgress(netPay, goalPLN);
+            this.missingPLN = com.asystent.kinowy.utils.PayrollCalculator.calculateMissingPLN(netPay, goalPLN);
+            this.missingHours = com.asystent.kinowy.utils.PayrollCalculator.calculateMissingHours(missingPLN, latestRate);
+            this.breakdown = breakdown;
         }
 
         public double getTotalHours() { return totalHours; }
@@ -180,20 +234,25 @@ public class MainViewModel extends AndroidViewModel {
         public double getTotalLosses() { return totalLosses; }
         public double getTotalTips() { return totalTips; }
         public double getNetPay() { return netPay; }
+        public float getGoalPLN() { return goalPLN; }
+        public int getGoalProgress() { return goalProgress; }
+        public double getMissingPLN() { return missingPLN; }
+        public double getMissingHours() { return missingHours; }
+        public List<RateBreakdown> getBreakdown() { return breakdown; }
     }
 
     /**
      * Konfiguruje MediatorLiveData, który reaguje na zmiany w:
-     * allShifts, allLosses, hourlyRateLive oraz currentSelectedMonth
+     * allShifts, allLosses, hourlyRateLive, monthlyGoalPLN oraz currentSelectedMonth
      * — i przelicza wypłatę za bieżący miesiąc.
      */
-
     private void setupPayrollCalculation() {
         monthlyPayroll.addSource(allShifts, shifts -> recalculatePayroll());
         monthlyPayroll.addSource(allLosses, losses -> recalculatePayroll());
         monthlyPayroll.addSource(allTips, tips -> recalculatePayroll());
         monthlyPayroll.addSource(hourlyRateLive, rate -> recalculatePayroll());
         monthlyPayroll.addSource(currentSelectedMonth, month -> recalculatePayroll());
+        monthlyPayroll.addSource(monthlyGoalPLN, goal -> recalculatePayroll());
     }
 
     /**
@@ -334,49 +393,83 @@ public class MainViewModel extends AndroidViewModel {
     }
 
     /**
-     * Przelicza wypłatę: sumuje godziny z bieżącego miesiąca × stawka − straty.
+     * Przelicza wypłatę wg logiki Per-Shift.
+     * Każda zmiana jest mnożona przez stawkę obowiązującą w JEJ DNIU.
+     * Dzięki temu podwyżka w trakcie miesiąca jest poprawnie uwzględniana.
+     *
+     * UWAGA: DAO wymaga background thread — całe obliczenia wykonujemy
+     * na AppDatabase.databaseWriteExecutor i wracamy przez postValue().
      */
     private void recalculatePayroll() {
-        List<Shift> shifts = allShifts.getValue();
-        List<Loss> losses = allLosses.getValue();
-        List<Tip> tips = allTips.getValue();
-        Float rate = hourlyRateLive.getValue();
+        // Odczytaj dane z LiveData na main thread ZANIM wejdziemy w background
+        // (LiveData.getValue() jest thread-safe tylko na main thread)
+        final List<Shift> shifts  = allShifts.getValue();
+        final List<Loss>  losses  = allLosses.getValue();
+        final List<Tip>   tips    = allTips.getValue();
+        final float goalPLN       = monthlyGoalPLN.getValue() != null ? monthlyGoalPLN.getValue() : 0f;
+        final float fallbackRate  = hourlyRateLive.getValue() != null ? hourlyRateLive.getValue() : 0f;
+        final String monthPrefix  = getCurrentMonthPrefix();
 
-        if (rate == null) rate = 0f;
-        String currentMonthPrefix = getCurrentMonthPrefix();
+        executor.execute(() -> {
+            // ─── Per-Shift: każda zmiana × jej stawka ───────────────────────────
+            double totalHours = 0;
+            double earnedGross = 0;
+            float latestRate = fallbackRate;
+            List<RateBreakdown> breakdown = new java.util.ArrayList<>();
 
-        // ─── Suma godzin ze zmian bieżącego miesiąca ─────────────────
-        double totalHours = 0;
-        if (shifts != null) {
-            for (Shift shift : shifts) {
-                if (shift.getDate() != null && shift.getDate().startsWith(currentMonthPrefix)) {
-                    totalHours += calculateShiftHours(shift);
+            if (shifts != null) {
+                java.util.Map<Float, Double> hoursByRate = new java.util.HashMap<>();
+                for (Shift shift : shifts) {
+                    if (shift.getDate() == null || !shift.getDate().startsWith(monthPrefix)) continue;
+                    double shiftHours = calculateShiftHours(shift);
+                    if (shiftHours <= 0) continue;
+                    totalHours += shiftHours;
+                    float rateForShift = rateHistoryDao.getRateForDate(shift.getDate());
+                    if (rateForShift <= 0) rateForShift = fallbackRate;
+                    earnedGross += shiftHours * rateForShift;
+                    
+                    hoursByRate.put(rateForShift, hoursByRate.getOrDefault(rateForShift, 0.0) + shiftHours);
+                }
+                
+                for (java.util.Map.Entry<Float, Double> entry : hoursByRate.entrySet()) {
+                    breakdown.add(new RateBreakdown(entry.getKey(), entry.getValue(), entry.getKey() * entry.getValue()));
+                }
+                breakdown.sort((a, b) -> Float.compare(b.rate, a.rate));
+                
+                if (totalHours > 0) {
+                    latestRate = (float) (earnedGross / totalHours);
+                } else {
+                    float monthRate = rateHistoryDao.getRateForDate(monthPrefix + "-28");
+                    latestRate = monthRate > 0 ? monthRate : fallbackRate;
                 }
             }
-        }
 
-        // ─── Suma strat z bieżącego miesiąca ────────────────────────
-        double totalLosses = 0;
-        if (losses != null) {
-            for (Loss loss : losses) {
-                if (loss.getDate() != null && loss.getDate().startsWith(currentMonthPrefix)) {
-                    totalLosses += loss.getAmount();
+            // ─── Suma strat z bieżącego miesiąca ────────────────────────────────
+            double totalLosses = 0;
+            if (losses != null) {
+                for (Loss loss : losses) {
+                    if (loss.getDate() != null && loss.getDate().startsWith(monthPrefix)) {
+                        totalLosses += loss.getAmount();
+                    }
                 }
             }
-        }
 
-        // ─── Suma napiwków z bieżącego miesiąca ─────────────────────
-        double totalTips = 0;
-        if (tips != null) {
-            for (Tip tip : tips) {
-                if (tip.getDate() != null && tip.getDate().startsWith(currentMonthPrefix)) {
-                    totalTips += tip.getAmount();
+            // ─── Suma napiwków z bieżącego miesiąca ─────────────────────────────
+            double totalTips = 0;
+            if (tips != null) {
+                for (Tip tip : tips) {
+                    if (tip.getDate() != null && tip.getDate().startsWith(monthPrefix)) {
+                        totalTips += tip.getAmount();
+                    }
                 }
             }
-        }
 
-        monthlyPayroll.setValue(new PayrollInfo(totalHours, rate, totalLosses, totalTips));
+            // postValue() — thread-safe, można wołać z tła
+            monthlyPayroll.postValue(new PayrollInfo(
+                    totalHours, latestRate, earnedGross, totalLosses, totalTips, goalPLN, breakdown));
+        });
     }
+
 
     /**
      * Oblicza liczbę przepracowanych godzin z pojedynczej zmiany.
@@ -423,8 +516,51 @@ public class MainViewModel extends AndroidViewModel {
     }
 
     /**
+     * Ustawia cel miesiączny w PLN. Wywołuje przeliczenie progresu.
+     */
+    public void setMonthlyGoalPLN(float goal) {
+        monthlyGoalPLN.setValue(goal);
+    }
+
+    public LiveData<Float> getMonthlyGoalPLN() {
+        return monthlyGoalPLN;
+    }
+
+    /**
+     * Dodaje nowy wpis do historii stawek.
+     * Wywołuje przeliczenie payroll po zapisaniu.
+     */
+    public void addRateHistory(com.asystent.kinowy.models.RateHistory rateHistory) {
+        executor.execute(() -> {
+            rateHistoryDao.insert(rateHistory);
+            // Wyzwól przeliczenie — zrób to na main thread przez postValue na hourlyRateLive
+            Float current = hourlyRateLive.getValue();
+            hourlyRateLive.postValue(current != null ? current : 0f);
+            Log.d(TAG, "✅ Dodano historię stawki: " + rateHistory.getRate() + " od " + rateHistory.getActiveFrom());
+        });
+    }
+
+    /**
+     * Usuwa wpis z historii stawek.
+     */
+    public void deleteRateHistory(com.asystent.kinowy.models.RateHistory rateHistory) {
+        executor.execute(() -> {
+            rateHistoryDao.delete(rateHistory);
+            Float current = hourlyRateLive.getValue();
+            hourlyRateLive.postValue(current != null ? current : 0f);
+        });
+    }
+
+    /**
+     * LiveData z listą historii stawek (do RecyclerView w ProfileFragment).
+     */
+    public LiveData<List<com.asystent.kinowy.models.RateHistory>> getAllRates() {
+        return allRates;
+    }
+
+    /**
      * LiveData z podsumowaniem wypłaty za bieżący miesiąc.
-     * Reaguje automatycznie na zmiany w shifts, losses i stawce.
+     * Reaguje automatycznie na zmiany w shifts, losses, stawkach i celu.
      */
     public LiveData<PayrollInfo> getMonthlyPayroll() {
         return monthlyPayroll;

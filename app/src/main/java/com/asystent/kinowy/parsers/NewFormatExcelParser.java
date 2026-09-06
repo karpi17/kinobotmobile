@@ -13,6 +13,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 
 import java.io.InputStream;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.Month;
 import java.time.Year;
@@ -104,6 +105,26 @@ public class NewFormatExcelParser implements ScheduleParser {
             warnings.add(new ParserWarning(ParserWarning.Type.OTHER,
                     "Nie wykryto nazwy miesiąca w nagłówku. Przyjęto bieżący miesiąc."));
         }
+
+        // ── Cross-check: weryfikacja miesiąca z dniami tygodnia w pliku ────────
+        // Menedżerka może zapomnieć zmienić nazwę miesiąca — sprawdzamy czy
+        // układ dni tygodnia (Tuesday, Wednesday...) pasuje do wykrytego miesiąca.
+        // Jeśli nie — szukamy właściwego i dodajemy ostrzeżenie.
+        int correctedMonth = crossCheckMonthWithDaysOfWeek(sheet, monthValue, currentYear);
+        if (correctedMonth != monthValue) {
+            String detectedName  = java.time.Month.of(monthValue).getDisplayName(
+                    java.time.format.TextStyle.FULL, new Locale("pl", "PL"));
+            String correctedName = java.time.Month.of(correctedMonth).getDisplayName(
+                    java.time.format.TextStyle.FULL, new Locale("pl", "PL"));
+            warnings.add(new ParserWarning(ParserWarning.Type.OTHER,
+                    "⚠️ UWAGA: Nagłówek grafiku wskazuje na " + detectedName.toUpperCase()
+                    + ", ale układ dni tygodnia odpowiada " + correctedName.toUpperCase()
+                    + ". Menedżer prawdopodobnie zapomniał zmienić nazwę miesiąca. "
+                    + "Automatycznie przyjęto: " + correctedName + "."));
+            monthValue = correctedMonth;
+            Log.w(TAG, "⚠️ Auto-korekta miesiąca: " + detectedName + " → " + correctedName);
+        }
+
 
         // 2. Parsowanie nagłówków pracowników (wiersz 0 i wiersz 1)
         List<EmployeeHeader> employees = parseEmployeeHeaders(sheet);
@@ -268,7 +289,113 @@ public class NewFormatExcelParser implements ScheduleParser {
         return result;
     }
 
+    /**
+     * Cross-check miesiąca: porównuje nazwy dni tygodnia z pliku (kolumna 1 lub 2)
+     * z rzeczywistym układem dni w wykrytym miesiącu.
+     *
+     * Scenario: Menedżer zapomniał zmienić nazwę miesiąca w nagłówku.
+     * Nagłówek mówi "August", ale w pliku dzień 1 to "Tuesday" a 1 września 2026
+     * to właśnie wtorek → auto-korekta do września.
+     *
+     * @param sheet        arkusz do analizy
+     * @param detectedMonth wykryty miesiąc z nagłówka (1-12)
+     * @param year         rok
+     * @return poprawiony miesiąc (1-12); równy detectedMonth jeśli brak konfliktu
+     */
+    private int crossCheckMonthWithDaysOfWeek(Sheet sheet, int detectedMonth, int year) {
+        // Mapy nazw dni tygodnia (EN i PL) → DayOfWeek
+        java.util.Map<String, DayOfWeek> dayMap = new java.util.LinkedHashMap<>();
+        dayMap.put("monday",     DayOfWeek.MONDAY);
+        dayMap.put("tuesday",    DayOfWeek.TUESDAY);
+        dayMap.put("wednesday",  DayOfWeek.WEDNESDAY);
+        dayMap.put("thursday",   DayOfWeek.THURSDAY);
+        dayMap.put("friday",     DayOfWeek.FRIDAY);
+        dayMap.put("saturday",   DayOfWeek.SATURDAY);
+        dayMap.put("sunday",     DayOfWeek.SUNDAY);
+        dayMap.put("poniedziałek", DayOfWeek.MONDAY);
+        dayMap.put("wtorek",     DayOfWeek.TUESDAY);
+        dayMap.put("środa",      DayOfWeek.WEDNESDAY);
+        dayMap.put("czwartek",   DayOfWeek.THURSDAY);
+        dayMap.put("piątek",     DayOfWeek.FRIDAY);
+        dayMap.put("sobota",     DayOfWeek.SATURDAY);
+        dayMap.put("niedziela",  DayOfWeek.SUNDAY);
+
+        // Zbierz pary (dayNum, DayOfWeek) z pliku
+        java.util.List<int[]> filePairs = new java.util.ArrayList<>(); // [dayNum, dayOfWeekValue]
+        for (int r = 2; r <= Math.min(sheet.getLastRowNum(), 35); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            int dayNum = parseDayNumber(row.getCell(0));
+            if (dayNum < 1 || dayNum > 31) dayNum = parseDayNumber(row.getCell(1));
+            if (dayNum < 1 || dayNum > 31) continue;
+
+            // Kolumna z nazwą dnia tygodnia — zazwyczaj kolumna 1 (idx=1)
+            // Sprawdzamy kolumny 1 i 2
+            String dayText = "";
+            for (int col : new int[]{1, 2}) {
+                Cell c = row.getCell(col);
+                if (c != null) {
+                    String t = getCellValueAsString(c).toLowerCase(Locale.ROOT).trim();
+                    if (dayMap.containsKey(t)) { dayText = t; break; }
+                }
+            }
+            if (dayText.isEmpty()) continue;
+            filePairs.add(new int[]{dayNum, dayMap.get(dayText).getValue()});
+            if (filePairs.size() >= 5) break; // 5 par wystarczy do pewnej detekcji
+        }
+
+        if (filePairs.isEmpty()) {
+            Log.d(TAG, "crossCheck: brak danych o dniach tygodnia — pomijam cross-check");
+            return detectedMonth; // brak danych → nie zmieniamy
+        }
+
+        // Sprawdź czy wykryty miesiąc pasuje
+        if (monthMatchesPairs(detectedMonth, year, filePairs)) {
+            Log.d(TAG, "crossCheck: miesiąc " + detectedMonth + " PASUJE do układu dni ✅");
+            return detectedMonth;
+        }
+
+        // Nie pasuje — szukaj właściwego w zakresie ±3 miesięcy
+        Log.w(TAG, "crossCheck: miesiąc " + detectedMonth + " NIE pasuje do układu dni — szukam korekty...");
+        for (int delta = 1; delta <= 3; delta++) {
+            for (int sign : new int[]{1, -1}) {
+                int candidate = ((detectedMonth - 1 + sign * delta + 12) % 12) + 1;
+                int candYear = year;
+                if (candidate == 12 && sign == -1 && detectedMonth <= 3) candYear--;
+                if (candidate == 1  && sign ==  1 && detectedMonth >= 11) candYear++;
+                if (monthMatchesPairs(candidate, candYear, filePairs)) {
+                    Log.w(TAG, "crossCheck: auto-korekta " + detectedMonth + " → " + candidate);
+                    return candidate;
+                }
+            }
+        }
+
+        Log.w(TAG, "crossCheck: nie znaleziono pasującego miesiąca — zostawiam oryginalny");
+        return detectedMonth;
+    }
+
+    /**
+     * Sprawdza czy co najmniej 3 pary (dayNum, dayOfWeekValue) z pliku
+     * pasują do faktycznych dni tygodnia w danym miesiącu/roku.
+     */
+    private boolean monthMatchesPairs(int month, int year, java.util.List<int[]> pairs) {
+        int matches = 0;
+        for (int[] pair : pairs) {
+            int dayNum = pair[0];
+            int expectedDow = pair[1]; // DayOfWeek.getValue() — Monday=1, Sunday=7
+            try {
+                LocalDate date = LocalDate.of(year, month, dayNum);
+                if (date.getDayOfWeek().getValue() == expectedDow) matches++;
+            } catch (Exception ignored) {
+                // Nieważny dzień (np. 31 w miesiącu 30-dniowym)
+            }
+        }
+        int needed = Math.max(2, pairs.size() - 1); // tolerancja: maks 1 błąd
+        return matches >= needed;
+    }
+
     private int parseMonthFromSheet(Sheet sheet) {
+
         String[] monthsEn = {"january", "february", "march", "april", "may", "june",
                 "july", "august", "september", "october", "november", "december"};
         String[] monthsPl = {"styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
@@ -445,6 +572,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                      .replace("oden", "open")
                      .replace("oden", "open")
                      .replace("s2k", "szk")
+                     .replaceAll("(\\d)[dD]\\b", "$10")
                      .replace("--", "-");
 
         // Autokorekta "off" - obsługuje warianty z prefiksem/sufiksem cyfry (np. "8 of", "8 off")
@@ -527,7 +655,38 @@ public class NewFormatExcelParser implements ScheduleParser {
             return new ParsedShiftInfo("17:00", "01:00", true, desc, "ZAMEK");
         }
 
+        // ── KROK 4: Maraton — długa zmiana zamykająca (np. "maraton od 20") ──────
+        // Format: "maraton od HH" → start=HH:00, end=01:00 (zamek)
+        //         samo "maraton"  → start=17:00, end=01:00
+        if (lower.contains("maraton")) {
+            java.util.regex.Matcher mOd = java.util.regex.Pattern
+                    .compile("od\\s*(\\d{1,2})(?::(\\d{2}))?").matcher(lower);
+            if (mOd.find()) {
+                int h = Integer.parseInt(mOd.group(1));
+                int m = mOd.group(2) != null ? Integer.parseInt(mOd.group(2)) : 0;
+                
+                int duration = 8;
+                String rest = lower.substring(mOd.end());
+                java.util.regex.Matcher mDur = java.util.regex.Pattern.compile("\\b(\\d{1,2})\\b$").matcher(rest);
+                if (mDur.find()) {
+                    duration = Integer.parseInt(mDur.group(1));
+                }
+                
+                int endH = (h + duration) % 24;
+                String startTime = String.format(Locale.US, "%02d:%02d", h, m);
+                String endTime = String.format(Locale.US, "%02d:%02d", endH, m);
+                return new ParsedShiftInfo(startTime, endTime, true, text, "ZAMEK");
+            }
+            return new ParsedShiftInfo("17:00", "01:00", true, text, "ZAMEK");
+        }
+
+        // ── KROK 5: Inne niesprecyzowane (np. "TMS paczki", "MS playlisty") ────
+        if (lower.contains("tms") || lower.contains("paczki") || lower.contains("playlisty") || lower.contains("ms")) {
+            return new ParsedShiftInfo("09:00", "17:00", false, text, "INNE (TMS)");
+        }
+
         return new ParsedShiftInfo(false);
+
     }
 
     private String getCellValueAsString(Cell cell) {

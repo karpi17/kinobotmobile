@@ -141,7 +141,65 @@ public class OcrScheduleParser implements ScheduleParser {
             else if (line.contains("dec")) { monthValue = 12; break; }
         }
 
+        // ── Cross-check: weryfikacja miesiąca z dniami tygodnia z obrazu ─────────
+        // Nagłówek może mieć błędny miesiąc (menedżer zapomniał go zmienić).
+        // Sprawdzamy czy układ "dzień tygodnia przy numerze dnia" pasuje do wykrytego miesiąca.
+        {
+            java.util.Map<String, Integer> dayMap = new java.util.LinkedHashMap<>();
+            dayMap.put("monday", 1); dayMap.put("tuesday", 2); dayMap.put("wednesday", 3);
+            dayMap.put("thursday", 4); dayMap.put("friday", 5);
+            dayMap.put("saturday", 6); dayMap.put("sunday", 7);
+            dayMap.put("poniedziałek", 1); dayMap.put("wtorek", 2); dayMap.put("środa", 3);
+            dayMap.put("czwartek", 4); dayMap.put("piątek", 5);
+            dayMap.put("sobota", 6); dayMap.put("niedziela", 7);
+
+            // Zbierz pary (dayNum, dayOfWeekValue) z linii OCR dopasowując numery do nazw po Y
+            java.util.Map<Integer, Integer> dayNumToY  = new java.util.LinkedHashMap<>();
+            java.util.Map<Integer, Integer> dowValToY  = new java.util.LinkedHashMap<>();
+            java.util.List<int[]> filePairs = new java.util.ArrayList<>();
+
+            for (com.google.mlkit.vision.text.Text.Line l : allLines) {
+                if (l.getBoundingBox() == null) continue;
+                int cy  = l.getBoundingBox().centerY();
+                String txt = l.getText().trim().toLowerCase(java.util.Locale.ROOT);
+                try { int n = Integer.parseInt(txt); if (n >= 1 && n <= 31) dayNumToY.put(n, cy); }
+                catch (NumberFormatException ignored) {}
+                if (dayMap.containsKey(txt)) dowValToY.put(dayMap.get(txt), cy);
+            }
+
+            // Dopasuj numer dnia do nazwy dnia po współrzędnej Y (tolerancja ±30px)
+            for (java.util.Map.Entry<Integer, Integer> numEntry : dayNumToY.entrySet()) {
+                int dayNum = numEntry.getKey();
+                int numY   = numEntry.getValue();
+                for (java.util.Map.Entry<Integer, Integer> nameEntry : dowValToY.entrySet()) {
+                    if (Math.abs(numY - nameEntry.getValue()) <= 30) {
+                        filePairs.add(new int[]{dayNum, nameEntry.getKey()});
+                        break;
+                    }
+                }
+                if (filePairs.size() >= 5) break;
+            }
+
+            if (!filePairs.isEmpty()) {
+                int corrected = crossCheckOcrMonth(monthValue, currentYear, filePairs);
+                if (corrected != monthValue) {
+                    String detectedName  = java.time.Month.of(monthValue).getDisplayName(
+                            java.time.format.TextStyle.FULL, new java.util.Locale("pl", "PL"));
+                    String correctedName = java.time.Month.of(corrected).getDisplayName(
+                            java.time.format.TextStyle.FULL, new java.util.Locale("pl", "PL"));
+                    warnings.add(new ParserWarning(ParserWarning.Type.OTHER,
+                            "⚠️ UWAGA: Nagłówek grafiku wskazuje na " + detectedName.toUpperCase()
+                            + ", ale układ dni tygodnia na zdjęciu odpowiada " + correctedName.toUpperCase()
+                            + ". Menedżer prawdopodobnie zapomniał zmienić nazwę miesiąca. "
+                            + "Automatycznie przyjęto: " + correctedName + "."));
+                    android.util.Log.w(TAG, "⚠️ OCR auto-korekta miesiąca: " + detectedName + " → " + correctedName);
+                    monthValue = corrected;
+                }
+            }
+        }
+
         Map<String, List<Shift>> scheduleByName = new LinkedHashMap<>();
+
         List<String> allDates = new ArrayList<>();
         List<String> foundNames = new ArrayList<>();
         List<GlobalShift> allGlobalShifts = new ArrayList<>();
@@ -334,6 +392,33 @@ public class OcrScheduleParser implements ScheduleParser {
             }
         }
 
+        // Budowanie granic kolumn (minX, maxX)
+        List<Text.Line> sortedNames = new ArrayList<>(namesRow);
+        Collections.sort(sortedNames, (a, b) -> {
+            if (a.getBoundingBox() == null || b.getBoundingBox() == null) return 0;
+            return Integer.compare(a.getBoundingBox().left, b.getBoundingBox().left);
+        });
+
+        Map<Text.Line, Integer> minXMap = new HashMap<>();
+        Map<Text.Line, Integer> maxXMap = new HashMap<>();
+        for (int i = 0; i < sortedNames.size(); i++) {
+            Text.Line current = sortedNames.get(i);
+            int minX = 0;
+            if (i > 0 && sortedNames.get(i-1).getBoundingBox() != null && current.getBoundingBox() != null) {
+                int prevRight = sortedNames.get(i-1).getBoundingBox().right;
+                int currLeft = current.getBoundingBox().left;
+                minX = (prevRight + currLeft) / 2;
+            }
+            int maxX = 10000;
+            if (i < sortedNames.size() - 1 && current.getBoundingBox() != null && sortedNames.get(i+1).getBoundingBox() != null) {
+                int currRight = current.getBoundingBox().right;
+                int nextLeft = sortedNames.get(i+1).getBoundingBox().left;
+                maxX = (currRight + nextLeft) / 2;
+            }
+            minXMap.put(current, minX);
+            maxXMap.put(current, maxX);
+        }
+
         int lastDayNum = 0;
         for (List<Text.Line> row : rows) {
             if (row.isEmpty()) continue;
@@ -400,30 +485,29 @@ public class OcrScheduleParser implements ScheduleParser {
 
             List<String> coworkersForDay = new ArrayList<>();
 
-            List<MatchPair> matches = new ArrayList<>();
+            Map<Text.Line, List<Text.Line>> personToCells = new HashMap<>();
+
             for (Text.Line cellEl : row) {
                 String cText = cellEl.getText().trim();
-                if (cText.equals(firstCell) || cText.equals(secondCell) || cText.toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tue|wed|thu|fri|sat|sun).*")) {
+                String lowerCText = cText.toLowerCase();
+                boolean isDayNum = lowerCText.matches("^[0-9]{1,2}$");
+                boolean isDayName = lowerCText.matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tue|wed|thu|fri|sat|sun).*");
+                if (isDayNum || isDayName) {
                     continue;
                 }
-                for (Text.Line nameEl : namesRow) {
-                    if (cellEl.getBoundingBox() != null && nameEl.getBoundingBox() != null) {
-                        int diff = Math.abs(cellEl.getBoundingBox().centerX() - nameEl.getBoundingBox().centerX());
-                        if (diff < 150) {
-                            matches.add(new MatchPair(nameEl, cellEl, diff));
+                
+                if (cellEl.getBoundingBox() != null) {
+                    int cellX = cellEl.getBoundingBox().centerX();
+                    Text.Line matchedPerson = null;
+                    for (Text.Line nameEl : sortedNames) {
+                        if (cellX >= minXMap.get(nameEl) && cellX < maxXMap.get(nameEl)) {
+                            matchedPerson = nameEl;
+                            break;
                         }
                     }
-                }
-            }
-            
-            Collections.sort(matches, (a, b) -> Integer.compare(a.diff, b.diff));
-            Map<Text.Line, List<Text.Line>> personToCells = new HashMap<>();
-            Set<Text.Line> usedCells = new HashSet<>();
-            
-            for (MatchPair match : matches) {
-                if (!usedCells.contains(match.cell)) {
-                    usedCells.add(match.cell);
-                    personToCells.computeIfAbsent(match.person, k -> new ArrayList<>()).add(match.cell);
+                    if (matchedPerson != null) {
+                        personToCells.computeIfAbsent(matchedPerson, k -> new ArrayList<>()).add(cellEl);
+                    }
                 }
             }
 
@@ -619,4 +703,45 @@ public class OcrScheduleParser implements ScheduleParser {
 
         return result;
     }
+
+    /**
+     * Cross-check miesiąca na podstawie par (dayNum, dayOfWeekValue) z obrazu OCR.
+     * Identyczna logika jak NewFormatExcelParser.crossCheckMonthWithDaysOfWeek().
+     * @return poprawiony miesiąc (1-12); równy detectedMonth jeśli brak konfliktu
+     */
+    private int crossCheckOcrMonth(int detectedMonth, int year, java.util.List<int[]> pairs) {
+        if (ocrMonthMatchesPairs(detectedMonth, year, pairs)) {
+            android.util.Log.d(TAG, "crossCheck OCR: miesiąc " + detectedMonth + " PASUJE ✅");
+            return detectedMonth;
+        }
+        android.util.Log.w(TAG, "crossCheck OCR: miesiąc " + detectedMonth + " NIE pasuje — szukam korekty...");
+        for (int delta = 1; delta <= 3; delta++) {
+            for (int sign : new int[]{1, -1}) {
+                int candidate = ((detectedMonth - 1 + sign * delta + 12) % 12) + 1;
+                int candYear = year;
+                if (candidate == 12 && sign == -1 && detectedMonth <= 3) candYear--;
+                if (candidate == 1  && sign ==  1 && detectedMonth >= 11) candYear++;
+                if (ocrMonthMatchesPairs(candidate, candYear, pairs)) {
+                    android.util.Log.w(TAG, "crossCheck OCR: auto-korekta " + detectedMonth + " → " + candidate);
+                    return candidate;
+                }
+            }
+        }
+        android.util.Log.w(TAG, "crossCheck OCR: nie znaleziono pasującego miesiąca");
+        return detectedMonth;
+    }
+
+    private boolean ocrMonthMatchesPairs(int month, int year, java.util.List<int[]> pairs) {
+        int matches = 0;
+        for (int[] pair : pairs) {
+            try {
+                java.time.LocalDate date = java.time.LocalDate.of(year, month, pair[0]);
+                // DayOfWeek.getValue(): Monday=1 ... Sunday=7
+                if (date.getDayOfWeek().getValue() == pair[1]) matches++;
+            } catch (Exception ignored) {}
+        }
+        int needed = Math.max(2, pairs.size() - 1);
+        return matches >= needed;
+    }
 }
+

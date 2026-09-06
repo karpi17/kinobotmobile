@@ -138,7 +138,7 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ── Karta: Cel Godzinowy ──────────────────────────────────────── -->
+        <!-- ── Karta: Cele Finansowe ──────────────────────────────────────── -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -155,7 +155,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📅 Cel Godzinowy"
+                    android:text="🎯 Cele Finansowe"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="?attr/colorPrimary"
@@ -164,18 +164,34 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Ile godzin chcesz przepracować w tym miesiącu?"
+                    android:text="Ile chcesz zarobić i ile godzin przepracować w tym miesiącu?"
                     android:textSize="11sp"
                     android:textColor="?android:attr/textColorSecondary"
                     android:layout_marginBottom="12dp" />
 
+                <!-- Cel w PLN -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Cel (godziny)"
+                    android:hint="Cel miesięczny (PLN)"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_marginBottom="8dp">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_profile_goal_pln"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="numberDecimal"
+                        android:maxLines="1"
+                        android:imeOptions="actionNext" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Cel godzinowy -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Cel godzinowy (h)"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                     android:layout_marginBottom="12dp">
-
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/et_profile_goal_hours"
                         android:layout_width="match_parent"
@@ -183,17 +199,79 @@
                         android:inputType="number"
                         android:maxLines="1"
                         android:imeOptions="actionDone" />
-
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_profile_save_goal"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Zapisz cel" />
+                    android:text="Zapisz cele" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <!-- ── Karta: Historia Stawek ──────────────────────────────────── -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardElevation="2dp"
+            app:cardCornerRadius="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📈 Historia Stawek"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorPrimary"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Dodaj podwyżkę z datą obowiązywania. Kalkulator automatycznie rozdzieli miesiąc na odpowiednie okresy."
+                    android:textSize="11sp"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Lista historii stawek -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_rate_history"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:nestedScrollingEnabled="false"
+                    android:layout_marginBottom="12dp" />
+
+                <TextView
+                    android:id="@+id/tv_rate_history_empty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Brak historii stawek"
+                    android:textSize="13sp"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:gravity="center"
+                    android:paddingVertical="8dp"
+                    android:visibility="gone" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_add_rate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="+ Dodaj podwyżkę / zmianę stawki"
+                    android:textAllCaps="false"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+
 
         <!-- ── Karta: Czas Powiadomienia ───────────────────────────────── -->
         <com.google.android.material.card.MaterialCardView
