@@ -56,6 +56,18 @@
             app:icon="@android:drawable/ic_dialog_alert"
             app:iconTint="?attr/colorOnPrimary" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_bhp_alert"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone"
+            app:backgroundTint="#FF3333"
+            android:textColor="#FFFFFF"
+            android:text="Strażnik BHP: Wykryto naruszenia grafiku!"
+            app:icon="@android:drawable/ic_dialog_alert"
+            app:iconTint="#FFFFFF" />
+
         <androidx.viewpager2.widget.ViewPager2
             android:id="@+id/vp_dashboard_carousel"
             android:layout_width="match_parent"

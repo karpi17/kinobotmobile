@@ -96,6 +96,9 @@ public class MainViewModel extends AndroidViewModel {
     // --- Współpracownicy najbliższej zmiany (overlap z global_shifts) ---
     private final MediatorLiveData<String> nextShiftCoworkers;
 
+    // --- Strażnik BHP ---
+    private final MediatorLiveData<List<com.asystent.kinowy.models.BhpAlert>> bhpAlerts;
+
     // ─── Finanse ─────────────────────────────────────────────────────────
 
     private final MutableLiveData<Float> hourlyRateLive;
@@ -143,6 +146,7 @@ public class MainViewModel extends AndroidViewModel {
         missingReportAlert = new MutableLiveData<>();
         closingCrewSuggestions = globalShiftDao.getActiveEmployeeNames();
         nextShiftCoworkers = new MediatorLiveData<>();
+        bhpAlerts = new MediatorLiveData<>();
 
         // ─── Finanse ────────────────────────────────────────────────────────
         hourlyRateLive = new MutableLiveData<>(0f);
@@ -178,6 +182,31 @@ public class MainViewModel extends AndroidViewModel {
         setupMonthlyShifts();
         setupUnknownShifts();
         checkMissingMonthlyReport();
+        setupBhpAlerts();
+    }
+
+    public LiveData<List<com.asystent.kinowy.models.BhpAlert>> getBhpAlerts() {
+        return bhpAlerts;
+    }
+
+    private void setupBhpAlerts() {
+        bhpAlerts.addSource(allShifts, shifts -> {
+            if (shifts != null) {
+                // Odfiltrujemy zmiany np. z przyszłości lub tylko z bierzącego miesiąca
+                // W Strażniku BHP analizujemy wszystko jak leci z perspektywy przyszłych/bieżących
+                // Optymalizacja: analizujemy tylko zmiany po dacie 1szego z bieżącego mca, aby nie alarmować o starych
+                String monthPrefix = getCurrentMonthPrefix();
+                List<Shift> filtered = new ArrayList<>();
+                for (Shift s : shifts) {
+                    if (s.getDate() != null && s.getDate().compareTo(monthPrefix + "-01") >= 0) {
+                        filtered.add(s);
+                    }
+                }
+                
+                List<com.asystent.kinowy.models.BhpAlert> alerts = com.asystent.kinowy.utils.BhpGuard.checkSchedule(filtered);
+                bhpAlerts.setValue(alerts);
+            }
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════════════

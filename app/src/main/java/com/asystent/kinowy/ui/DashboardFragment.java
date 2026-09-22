@@ -363,6 +363,27 @@ public class DashboardFragment extends Fragment {
             carouselAdapter.updateCoworkers(coworkers);
         });
 
+        viewModel.getBhpAlerts().observe(getViewLifecycleOwner(), alerts -> {
+            MaterialButton btnBhpAlert = requireView().findViewById(R.id.btn_bhp_alert);
+            if (alerts != null && !alerts.isEmpty()) {
+                btnBhpAlert.setVisibility(View.VISIBLE);
+                btnBhpAlert.setText("Strażnik BHP: " + alerts.size() + " alerty(ów)!");
+                btnBhpAlert.setOnClickListener(v -> {
+                    StringBuilder sb = new StringBuilder();
+                    for (com.asystent.kinowy.models.BhpAlert alert : alerts) {
+                        sb.append("• ").append(alert.getMessage()).append("\n\n");
+                    }
+                    new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                            .setTitle("Naruszenia grafiku (BHP)")
+                            .setMessage(sb.toString().trim())
+                            .setPositiveButton("OK", null)
+                            .show();
+                });
+            } else {
+                btnBhpAlert.setVisibility(View.GONE);
+            }
+        });
+
         viewModel.getMonthlyHoursGoal().observe(getViewLifecycleOwner(), goal -> updateProgressUI());
         viewModel.getMonthlyPayroll().observe(getViewLifecycleOwner(), payroll -> updateProgressUI());
     }
