@@ -1,12 +1,9 @@
 package com.asystent.kinowy.ui;
 
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -73,39 +70,16 @@ public class ImportPreviewFragment extends Fragment {
         tvEmptyShiftsNotice = view.findViewById(R.id.tvEmptyShiftsNotice);
         btnCancelImport = view.findViewById(R.id.btnCancelImport);
         btnConfirmImport = view.findViewById(R.id.btnConfirmImport);
+
+        // Spinner roli przeniesiony do BottomSheet konfiguracji — ukryj go jeśli nadal istnieje w layoucie
         spinnerRole = view.findViewById(R.id.spinnerRole);
+        if (spinnerRole != null) spinnerRole.setVisibility(View.GONE);
 
         rvPreviewShifts.setLayoutManager(new LinearLayoutManager(requireContext()));
         shiftAdapter = new ShiftAdapter(shift -> {
             showEditShiftDialog(shift);
         });
         rvPreviewShifts.setAdapter(shiftAdapter);
-
-        // Ustawienie wartości Spinnera z SharedPreferences
-        SharedPreferences prefs = requireContext().getSharedPreferences("asystent_kinowy_prefs", Context.MODE_PRIVATE);
-        String currentRole = prefs.getString("preferred_role", "Dowolna (Automatycznie)");
-        String[] rolesArray = getResources().getStringArray(R.array.roles_array);
-        for (int i = 0; i < rolesArray.length; i++) {
-            if (rolesArray[i].equals(currentRole)) {
-                spinnerRole.setSelection(i);
-                break;
-            }
-        }
-
-        spinnerRole.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                String selected = parent.getItemAtPosition(position).toString();
-                String saved = prefs.getString("preferred_role", "Dowolna (Automatycznie)");
-                if (!selected.equals(saved)) {
-                    prefs.edit().putString("preferred_role", selected).apply();
-                    Toast.makeText(requireContext(), "Zmieniono rolę na: " + selected + ". Zimportuj grafik ponownie, aby zastosować.", Toast.LENGTH_LONG).show();
-                }
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) { }
-        });
 
         viewModel.getPendingImport().observe(getViewLifecycleOwner(), this::bindParseResult);
 
@@ -123,10 +97,20 @@ public class ImportPreviewFragment extends Fragment {
         btnConfirmImport.setOnClickListener(v -> {
             ScheduleParseResult result = viewModel.getPendingImport().getValue();
             if (result != null) {
-                boolean clearExisting = cbClearExisting.isChecked();
-                viewModel.commitImport(result, true, clearExisting);
-                viewModel.clearPendingImport();
-                Toast.makeText(requireContext(), "Zatwierdzono import grafiku!", Toast.LENGTH_SHORT).show();
+                // Tryb pochodzi z ScheduleParseResult (ustawiony przez BottomSheet)
+                // clearMode: 0=aktualizuj, 1=połącz, 2=podgląd
+                int mode = result.getClearMode();
+                if (mode == 2) {
+                    // Tryb podglądu — informuj i nie zapisuj
+                    Toast.makeText(requireContext(), "Tryb podglądu — zmiany nie zostały zapisane.", Toast.LENGTH_LONG).show();
+                    viewModel.clearPendingImport();
+                } else {
+                    boolean clearExisting = (mode == 0); // tryb "aktualizuj" czyści stary grafik
+                    viewModel.commitImport(result, true, clearExisting);
+                    viewModel.clearPendingImport();
+                    String modeLabel = clearExisting ? "Zaktualizowano grafik!" : "Połączono z istniejącym grafikiem!";
+                    Toast.makeText(requireContext(), modeLabel, Toast.LENGTH_SHORT).show();
+                }
                 if (getParentFragmentManager().getBackStackEntryCount() > 0) {
                     getParentFragmentManager().popBackStack();
                 } else {

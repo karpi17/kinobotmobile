@@ -21,6 +21,12 @@ public class ScheduleParseResult {
     private final String sourceDescription;
     private List<Shift> targetUserShifts;
 
+    /**
+     * Tryb importu wybrany przez użytkownika w BottomSheet konfiguracji.
+     * 0 = aktualizuj (zastąp auto-dane), 1 = połącz (dodaj), 2 = podgląd (nie zapisuj)
+     */
+    private int clearMode = 0;
+
     public ScheduleParseResult(Map<String, List<Shift>> scheduleByName,
                                List<String> allDates,
                                List<String> foundNames,
@@ -38,39 +44,19 @@ public class ScheduleParseResult {
         this.targetUserShifts = new ArrayList<>();
     }
 
-    public Map<String, List<Shift>> getScheduleByName() {
-        return scheduleByName;
-    }
+    public Map<String, List<Shift>> getScheduleByName() { return scheduleByName; }
+    public List<String> getAllDates() { return allDates; }
+    public List<String> getFoundNames() { return foundNames; }
+    public List<GlobalShift> getAllGlobalShifts() { return allGlobalShifts; }
+    public List<ParserWarning> getWarnings() { return warnings; }
+    public float getConfidence() { return confidence; }
+    public String getSourceDescription() { return sourceDescription; }
 
-    public List<String> getAllDates() {
-        return allDates;
-    }
-
-    public List<String> getFoundNames() {
-        return foundNames;
-    }
-
-    public List<GlobalShift> getAllGlobalShifts() {
-        return allGlobalShifts;
-    }
-
-    public List<ParserWarning> getWarnings() {
-        return warnings;
-    }
-
-    public float getConfidence() {
-        return confidence;
-    }
-
-    public String getSourceDescription() {
-        return sourceDescription;
-    }
-
-    public List<Shift> getTargetUserShifts() {
-        return targetUserShifts;
-    }
-
+    public List<Shift> getTargetUserShifts() { return targetUserShifts; }
     public void setTargetUserShifts(List<Shift> targetUserShifts) {
         this.targetUserShifts = targetUserShifts != null ? targetUserShifts : new ArrayList<>();
     }
+
+    public int getClearMode() { return clearMode; }
+    public void setClearMode(int clearMode) { this.clearMode = clearMode; }
 }
