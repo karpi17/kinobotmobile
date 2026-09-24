@@ -56,6 +56,7 @@ public class MainActivity extends AppCompatActivity
     private final ScheduleFragment  scheduleFragment  = new ScheduleFragment();
     private final FinanceFragment   financeFragment   = new FinanceFragment();
     private final ProfileFragment   profileFragment   = new ProfileFragment();
+    private final StatisticsFragment statisticsFragment = new StatisticsFragment();
     private Fragment activeFragment;
 
     // ─── Drawer ─────────────────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ public class MainActivity extends AppCompatActivity
                     .add(R.id.fragment_container, profileFragment,   "profile").hide(profileFragment)
                     .add(R.id.fragment_container, financeFragment,   "finance").hide(financeFragment)
                     .add(R.id.fragment_container, scheduleFragment,  "schedule").hide(scheduleFragment)
+                    .add(R.id.fragment_container, statisticsFragment, "statistics").hide(statisticsFragment)
                     .add(R.id.fragment_container, dashboardFragment, "dashboard")
                     .commit();
             navigationView.setCheckedItem(R.id.nav_dashboard);
@@ -157,6 +159,7 @@ public class MainActivity extends AppCompatActivity
         else if (id == R.id.nav_schedule)  selected = scheduleFragment;
         else if (id == R.id.nav_finance)   selected = financeFragment;
         else if (id == R.id.nav_profile)   selected = profileFragment;
+        else if (id == R.id.nav_statistics) selected = statisticsFragment;
         else return false;
 
         showFragment(selected);

@@ -99,6 +99,9 @@ public class MainViewModel extends AndroidViewModel {
     // --- Strażnik BHP ---
     private final MediatorLiveData<List<com.asystent.kinowy.models.BhpAlert>> bhpAlerts;
 
+    // --- KinoBot Wrapped ---
+    private final MutableLiveData<com.asystent.kinowy.models.YearlyStats> yearlyStats;
+
     // ─── Finanse ─────────────────────────────────────────────────────────
 
     private final MutableLiveData<Float> hourlyRateLive;
@@ -147,6 +150,7 @@ public class MainViewModel extends AndroidViewModel {
         closingCrewSuggestions = globalShiftDao.getActiveEmployeeNames();
         nextShiftCoworkers = new MediatorLiveData<>();
         bhpAlerts = new MediatorLiveData<>();
+        yearlyStats = new MutableLiveData<>();
 
         // ─── Finanse ────────────────────────────────────────────────────────
         hourlyRateLive = new MutableLiveData<>(0f);
@@ -187,6 +191,26 @@ public class MainViewModel extends AndroidViewModel {
 
     public LiveData<List<com.asystent.kinowy.models.BhpAlert>> getBhpAlerts() {
         return bhpAlerts;
+    }
+
+    public LiveData<com.asystent.kinowy.models.YearlyStats> getYearlyStats() {
+        return yearlyStats;
+    }
+
+    public void calculateStatistics(String year) {
+        // Robimy snapshot list z LiveData na main threadzie
+        List<Shift> shiftsSnapshot = allShifts.getValue();
+        List<Loss> lossesSnapshot = allLosses.getValue();
+        List<Tip> tipsSnapshot = allTips.getValue();
+        List<com.asystent.kinowy.models.RateHistory> ratesSnapshot = allRates.getValue();
+
+        executor.execute(() -> {
+            List<GlobalShift> gsSnapshot = globalShiftDao.getAllGlobalShiftsSync();
+            com.asystent.kinowy.models.YearlyStats stats = com.asystent.kinowy.utils.StatisticsCalculator.calculate(
+                    year, shiftsSnapshot, gsSnapshot, lossesSnapshot, tipsSnapshot, ratesSnapshot
+            );
+            yearlyStats.postValue(stats);
+        });
     }
 
     private void setupBhpAlerts() {
