@@ -60,7 +60,7 @@ public class StatisticsCalculator {
         List<RateHistory> ratesSortedDesc = new ArrayList<>();
         if (rateHistories != null) {
             ratesSortedDesc.addAll(rateHistories);
-            ratesSortedDesc.sort((a, b) -> b.getEffectiveFromDate().compareTo(a.getEffectiveFromDate()));
+            ratesSortedDesc.sort((a, b) -> b.getActiveFrom().compareTo(a.getActiveFrom()));
         }
 
         // Grupowanie globalnych zmian w strukturę szybkiego wyszukiwania
@@ -253,11 +253,11 @@ public class StatisticsCalculator {
     private static float getRateForDate(String date, List<RateHistory> ratesSortedDesc) {
         if (ratesSortedDesc == null || ratesSortedDesc.isEmpty()) return 0f;
         for (RateHistory rh : ratesSortedDesc) {
-            if (date.compareTo(rh.getEffectiveFromDate()) >= 0) {
-                return rh.getHourlyRate();
+            if (date.compareTo(rh.getActiveFrom()) >= 0) {
+                return rh.getRate();
             }
         }
-        return ratesSortedDesc.get(ratesSortedDesc.size() - 1).getHourlyRate();
+        return ratesSortedDesc.get(ratesSortedDesc.size() - 1).getRate();
     }
     
     private static double calculateHours(String startTime, String endTime) {
