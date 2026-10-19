@@ -18,6 +18,9 @@ public class BackupData {
     private List<MonthlyReport> monthlyReports = new ArrayList<>();
     private List<Loss> losses = new ArrayList<>();
     private List<Tip> tips = new ArrayList<>();
+    private List<RateHistory> rateHistories = new ArrayList<>();
+    private List<ActiveEmployee> activeEmployees = new ArrayList<>();
+    private java.util.Map<String, Object> userSettings = new java.util.HashMap<>();
 
     public BackupData() {
         // Pusty konstruktor na potyły zrębów rozbierających obiekt JSON we właściwą klamrę (GSON deserializacja)
@@ -85,5 +88,29 @@ public class BackupData {
 
     public void setTips(List<Tip> tips) {
         this.tips = tips;
+    }
+
+    public List<RateHistory> getRateHistories() {
+        return rateHistories != null ? rateHistories : new ArrayList<>();
+    }
+
+    public void setRateHistories(List<RateHistory> rateHistories) {
+        this.rateHistories = rateHistories;
+    }
+
+    public List<ActiveEmployee> getActiveEmployees() {
+        return activeEmployees != null ? activeEmployees : new ArrayList<>();
+    }
+
+    public void setActiveEmployees(List<ActiveEmployee> activeEmployees) {
+        this.activeEmployees = activeEmployees;
+    }
+
+    public java.util.Map<String, Object> getUserSettings() {
+        return userSettings != null ? userSettings : new java.util.HashMap<>();
+    }
+
+    public void setUserSettings(java.util.Map<String, Object> userSettings) {
+        this.userSettings = userSettings;
     }
 }

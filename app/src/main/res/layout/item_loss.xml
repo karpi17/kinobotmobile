@@ -36,4 +36,15 @@
         android:textSize="14sp"
         android:textColor="#AAAAAA" />
 
+    <!-- Usuń transakcję -->
+    <ImageButton
+        android:id="@+id/btn_delete_transaction"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Usuń"
+        android:src="@android:drawable/ic_menu_delete"
+        android:tint="#888888" />
+
 </LinearLayout>

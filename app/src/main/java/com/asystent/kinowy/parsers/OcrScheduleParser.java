@@ -419,6 +419,7 @@ public class OcrScheduleParser implements ScheduleParser {
             maxXMap.put(current, maxX);
         }
 
+        int maxDayInMonth = java.time.YearMonth.of(currentYear, monthValue).lengthOfMonth();
         int lastDayNum = 0;
         for (List<Text.Line> row : rows) {
             if (row.isEmpty()) continue;
@@ -434,7 +435,7 @@ public class OcrScheduleParser implements ScheduleParser {
                     for (String part : parts) {
                         if (!part.isEmpty()) {
                             int candidate = Integer.parseInt(part);
-                            if (candidate >= 1 && candidate <= 31) {
+                            if (candidate >= 1 && candidate <= maxDayInMonth) {
                                 parsedNumber = candidate;
                                 break;
                             }
@@ -448,7 +449,7 @@ public class OcrScheduleParser implements ScheduleParser {
                     for (String part : parts) {
                         if (!part.isEmpty()) {
                             int candidate = Integer.parseInt(part);
-                            if (candidate >= 1 && candidate <= 31) {
+                            if (candidate >= 1 && candidate <= maxDayInMonth) {
                                 parsedNumber = candidate;
                                 break;
                             }
@@ -463,17 +464,17 @@ public class OcrScheduleParser implements ScheduleParser {
             boolean hasDayName = firstCell.toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*") ||
                                  secondCell.toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*");
 
-            if (parsedNumber == lastDayNum + 1) {
+            if (parsedNumber == lastDayNum + 1 && parsedNumber <= maxDayInMonth) {
                 dayNum = parsedNumber;
-            } else if (hasDayName) {
+            } else if (hasDayName && lastDayNum + 1 <= maxDayInMonth) {
                 // Skoro to jest nazwa dnia, to po prostu wchodzimy w kolejny wiersz siatki kalendarza!
                 // Olej błędy OCR (np. OCR wyczytał '25' zamiast '23' w '23 Sunday').
                 dayNum = lastDayNum + 1;
-            } else if (parsedNumber > lastDayNum && parsedNumber <= 31) {
+            } else if (parsedNumber > lastDayNum && parsedNumber <= maxDayInMonth) {
                 dayNum = parsedNumber;
             }
             
-            if (dayNum < 1 || dayNum > 31) continue;
+            if (dayNum < 1 || dayNum > maxDayInMonth) continue;
             // Zabezpieczenie przed losowymi numerami z sumowania
             // Dzień musi rosnąć (nie może być mniejszy niż poprzedni o ile to nie z nazwy dnia, chociaż nazwa podbija lastDayNum + 1)
             // I nie może urosnąć o więcej niż 5.
@@ -550,6 +551,7 @@ public class OcrScheduleParser implements ScheduleParser {
                                 true, false, info.category
                         );
                         userShift.setClosingShift(info.isClosingShift);
+                        userShift.setClosingCrew("");
                         
                         boolean alreadyHasShift = false;
                         for (Shift s : targetUserShifts) {
@@ -564,12 +566,11 @@ public class OcrScheduleParser implements ScheduleParser {
                             if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
                         }
                     } else {
-                        if (info.isClosingShift) {
-                            if (!coworkersForDay.contains(empName)) coworkersForDay.add(empName);
-                        }
+                        if (!coworkersForDay.contains(empName)) coworkersForDay.add(empName);
                     }
                 } else if (isTargetUser) {
                      Shift userShift = new Shift(dateStr, "", "", "WOLNE", false, false, "WOLNE");
+                     userShift.setClosingCrew("");
                      targetUserShifts.add(userShift);
                      String n = uniqueNamesMap.containsKey(targetUserElement) ? uniqueNamesMap.get(targetUserElement) : targetUserElement.getText().trim();
                      if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
@@ -588,21 +589,18 @@ public class OcrScheduleParser implements ScheduleParser {
             if (!targetUserHasEntryForToday) {
                 Log.d(TAG, "[" + dateStr + "] KACPER WOLNE — rawText='(brak komórki OCR)'");
                 Shift userShift = new Shift(dateStr, "", "", "WOLNE", false, false, "WOLNE");
+                userShift.setClosingCrew("");
                 targetUserShifts.add(userShift);
                 String n = uniqueNamesMap.containsKey(targetUserElement) ? uniqueNamesMap.get(targetUserElement) : targetUserElement.getText().trim();
                 if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
             }
-            // Po iteracji po wszystkich osobach, uzupełniamy closingCrew dla shift Kacpra
-            if (!coworkersForDay.isEmpty()) {
-                Log.d(TAG, "[" + dateStr + "] Współpracownicy na zmianie zamykającej: " + String.join(", ", coworkersForDay));
-                for (int si = targetUserShifts.size() - 1; si >= 0; si--) {
-                    if (targetUserShifts.get(si).getDate() != null &&
-                            targetUserShifts.get(si).getDate().equals(dateStr)) {
-                        if (targetUserShifts.get(si).isClosingShift()) {
-                            targetUserShifts.get(si).setClosingCrew(String.join(", ", coworkersForDay));
-                        }
-                        break;
-                    }
+            // Po iteracji po wszystkich osobach, uzupełniamy closingCrew dla shift Kacpra (nigdy null)
+            String crewJoined = coworkersForDay.isEmpty() ? "" : String.join(", ", coworkersForDay);
+            for (int si = targetUserShifts.size() - 1; si >= 0; si--) {
+                if (targetUserShifts.get(si).getDate() != null &&
+                        targetUserShifts.get(si).getDate().equals(dateStr)) {
+                    targetUserShifts.get(si).setClosingCrew(crewJoined);
+                    break;
                 }
             }
         }

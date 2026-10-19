@@ -53,19 +53,31 @@ public class BootAlarmReceiver extends BroadcastReceiver {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         executor.execute(() -> {
             try {
-                AppDatabase db = AppDatabase.getInstance(context.getApplicationContext());
+                Context appCtx = context.getApplicationContext();
+                AppDatabase db = AppDatabase.getInstance(appCtx);
                 GlobalShiftDao dao = db.globalShiftDao();
 
-                List<GlobalShift> alarmedShifts = dao.getShiftsWithAlarms();
+                String userName = appCtx.getSharedPreferences("asystent_kinowy_prefs", Context.MODE_PRIVATE)
+                        .getString("user_name", "");
+
+                List<GlobalShift> alarmedShifts = (userName != null && !userName.trim().isEmpty())
+                        ? dao.getShiftsWithAlarmsForUser(userName.trim())
+                        : dao.getShiftsWithAlarms();
                 Log.i(TAG, "🔍 Znaleziono " + alarmedShifts.size() + " zmian z aktywnym alarmem.");
 
                 int scheduled = 0;
                 for (GlobalShift shift : alarmedShifts) {
-                    AlarmScheduler.scheduleOneOffAlarm(context.getApplicationContext(), shift);
+                    AlarmScheduler.scheduleOneOffAlarm(appCtx, shift);
                     scheduled++;
                 }
 
-                Log.i(TAG, "✅ Reschedule zakończony. Przetworzone: " + scheduled
+                // Zaplanuj również powiadomienia push (START i END zmiany)
+                List<com.asystent.kinowy.models.Shift> userShifts = db.shiftDao().getAllShiftsSync();
+                if (userShifts != null && !userShifts.isEmpty()) {
+                    com.asystent.kinowy.notifications.NotificationScheduler.scheduleAlarms(appCtx, userShifts);
+                }
+
+                Log.i(TAG, "✅ Reschedule zakończony. Przetworzone budziki: " + scheduled
                         + " (przeszłe/nieprawidłowe pominięte automatycznie przez AlarmScheduler).");
             } catch (Exception e) {
                 Log.e(TAG, "❌ Błąd podczas reschedulowania alarmów: " + e.getMessage(), e);

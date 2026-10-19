@@ -30,8 +30,8 @@ android {
         applicationId "com.asystent.kinowy"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 35
+        versionName "3.5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -41,6 +41,10 @@ android {
                 arguments += ["room.schemaLocation": "$projectDir/schemas".toString()]
             }
         }
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
@@ -101,7 +105,6 @@ dependencies {
 
     // Google Play Services – OAuth Sign-In
     implementation 'com.google.android.gms:play-services-auth:21.0.0'
-    implementation 'com.google.android.gms:play-services-auth-api-phone:18.0.2'
 
     // Apache POI – .xlsx parsing
     implementation 'org.apache.poi:poi:5.3.0'

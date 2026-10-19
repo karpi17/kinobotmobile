@@ -171,4 +171,32 @@ public class PayrollCalculatorTest {
                 PayrollCalculator.simulateExtraHours(0.0, 32f, 2000.0, 3000f);
         assertEquals("—", result.toDisplayString());
     }
+
+    // ─── Godziny nocne 22:00–06:00 (R3) ──────────────────────────────────────
+
+    @Test
+    public void testCalculateNightHours_closingShift17To01_returns3Hours() {
+        assertEquals(3.0, PayrollCalculator.calculateNightHours("17:00", "01:00"), 0.001);
+    }
+
+    @Test
+    public void testCalculateNightHours_dayShift09To17_returnsZero() {
+        assertEquals(0.0, PayrollCalculator.calculateNightHours("09:00", "17:00"), 0.001);
+    }
+
+    @Test
+    public void testCalculateNightHours_fullNight22To06_returns8Hours() {
+        assertEquals(8.0, PayrollCalculator.calculateNightHours("22:00", "06:00"), 0.001);
+    }
+
+    @Test
+    public void testCalculateNightHours_earlyMorning05To13_returns1Hour() {
+        assertEquals(1.0, PayrollCalculator.calculateNightHours("05:00", "13:00"), 0.001);
+    }
+
+    @Test
+    public void testCalculateNightHours_nullOrEmpty_returnsZero() {
+        assertEquals(0.0, PayrollCalculator.calculateNightHours((String) null, "01:00"), 0.001);
+        assertEquals(0.0, PayrollCalculator.calculateNightHours("", ""), 0.001);
+    }
 }

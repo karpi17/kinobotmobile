@@ -81,6 +81,18 @@ public class StatisticsFragment extends Fragment {
             public void onNothingSelected(AdapterView<?> parent) {}
         });
 
+        Runnable triggerRecalculate = () -> {
+            int pos = spinnerYear.getSelectedItemPosition();
+            String selected = (pos >= 0 && pos < years.size()) ? years.get(pos) : "all-time";
+            viewModel.calculateStatistics(selected);
+        };
+
+        viewModel.getAllShifts().observe(getViewLifecycleOwner(), shifts -> triggerRecalculate.run());
+        viewModel.getAllLosses().observe(getViewLifecycleOwner(), losses -> triggerRecalculate.run());
+        viewModel.getAllTips().observe(getViewLifecycleOwner(), tips -> triggerRecalculate.run());
+        viewModel.getAllRates().observe(getViewLifecycleOwner(), rates -> triggerRecalculate.run());
+        viewModel.getHourlyRateLive().observe(getViewLifecycleOwner(), rate -> triggerRecalculate.run());
+
         viewModel.getYearlyStats().observe(getViewLifecycleOwner(), stats -> {
             if (stats != null) {
                 tvTotalHours.setText(String.format(Locale.getDefault(), "%.1f h", stats.getTotalHours()));
@@ -98,14 +110,29 @@ public class StatisticsFragment extends Fragment {
         return view;
     }
 
+    @Override
+    public void onHiddenChanged(boolean hidden) {
+        super.onHiddenChanged(hidden);
+        if (!hidden && viewModel != null && getView() != null) {
+            Spinner spinnerYear = getView().findViewById(R.id.spinner_year);
+            if (spinnerYear != null) {
+                int currentYear = LocalDate.now().getYear();
+                List<String> years = Arrays.asList("all-time", String.valueOf(currentYear), String.valueOf(currentYear - 1));
+                int pos = spinnerYear.getSelectedItemPosition();
+                String selected = (pos >= 0 && pos < years.size()) ? years.get(pos) : "all-time";
+                viewModel.calculateStatistics(selected);
+            }
+        }
+    }
+
     private void shareScreenshot() {
         try {
-            // Generowanie zrzutu ze ScrollView
+            // Generowanie zrzutu ze ScrollView z ciemnym tłem motywu (#121212)
             int totalHeight = ((androidx.core.widget.NestedScrollView) scrollContainer).getChildAt(0).getHeight();
             int totalWidth = scrollContainer.getWidth();
             Bitmap b = Bitmap.createBitmap(totalWidth, totalHeight, Bitmap.Config.ARGB_8888);
             Canvas c = new Canvas(b);
-            c.drawColor(getResources().getColor(android.R.color.background_light, null));
+            c.drawColor(android.graphics.Color.parseColor("#121212"));
             ((androidx.core.widget.NestedScrollView) scrollContainer).getChildAt(0).draw(c);
 
             File cachePath = new File(requireContext().getCacheDir(), "images");

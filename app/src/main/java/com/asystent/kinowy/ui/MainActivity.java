@@ -58,6 +58,8 @@ public class MainActivity extends AppCompatActivity
     private final ProfileFragment   profileFragment   = new ProfileFragment();
     private final StatisticsFragment statisticsFragment = new StatisticsFragment();
     private Fragment activeFragment;
+    private static final String KEY_SELECTED_NAV_ID = "selected_nav_id";
+    private int selectedNavId = R.id.nav_dashboard;
 
     // ─── Drawer ─────────────────────────────────────────────────────────────────
     private DrawerLayout    drawerLayout;
@@ -74,6 +76,7 @@ public class MainActivity extends AppCompatActivity
     protected void onCreate(Bundle savedInstanceState) {
         if (savedInstanceState != null) {
             savedInstanceState.remove("android:support:fragments");
+            selectedNavId = savedInstanceState.getInt(KEY_SELECTED_NAV_ID, R.id.nav_dashboard);
         }
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
@@ -103,18 +106,19 @@ public class MainActivity extends AppCompatActivity
         // pierwszego TextView wewnątrz toolbara (jest nim tytuł).
         setupEasterEgg(toolbar);
 
-        // ─── Domyślny fragment ───────────────────────────────────────────────────
-        if (savedInstanceState == null) {
-            activeFragment = dashboardFragment;
-            getSupportFragmentManager().beginTransaction()
-                    .add(R.id.fragment_container, profileFragment,   "profile").hide(profileFragment)
-                    .add(R.id.fragment_container, financeFragment,   "finance").hide(financeFragment)
-                    .add(R.id.fragment_container, scheduleFragment,  "schedule").hide(scheduleFragment)
-                    .add(R.id.fragment_container, statisticsFragment, "statistics").hide(statisticsFragment)
-                    .add(R.id.fragment_container, dashboardFragment, "dashboard")
-                    .commit();
-            navigationView.setCheckedItem(R.id.nav_dashboard);
+        // ─── Dodanie fragmentów i odtworzenie wybranej zakładki ─────────────────
+        activeFragment = getFragmentForNavId(selectedNavId);
+        androidx.fragment.app.FragmentTransaction tx = getSupportFragmentManager().beginTransaction();
+        Fragment[] allFragments = {profileFragment, financeFragment, scheduleFragment, statisticsFragment, dashboardFragment};
+        String[] allTags = {"profile", "finance", "schedule", "statistics", "dashboard"};
+        for (int i = 0; i < allFragments.length; i++) {
+            tx.add(R.id.fragment_container, allFragments[i], allTags[i]);
+            if (allFragments[i] != activeFragment) {
+                tx.hide(allFragments[i]);
+            }
         }
+        tx.commit();
+        navigationView.setCheckedItem(selectedNavId);
 
         // ─── Alarms — obserwuj zmiany i przelicz alarmy ─────────────────────────
         viewModel.getAllShifts().observe(this, shifts -> {
@@ -148,6 +152,20 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt(KEY_SELECTED_NAV_ID, selectedNavId);
+    }
+
+    private Fragment getFragmentForNavId(int id) {
+        if (id == R.id.nav_schedule) return scheduleFragment;
+        if (id == R.id.nav_finance) return financeFragment;
+        if (id == R.id.nav_profile) return profileFragment;
+        if (id == R.id.nav_statistics) return statisticsFragment;
+        return dashboardFragment;
+    }
+
     // ─── NavigationView.OnNavigationItemSelectedListener ────────────────────────
 
     @Override
@@ -162,6 +180,7 @@ public class MainActivity extends AppCompatActivity
         else if (id == R.id.nav_statistics) selected = statisticsFragment;
         else return false;
 
+        selectedNavId = id;
         showFragment(selected);
         drawerLayout.closeDrawers();
         return true;
@@ -169,11 +188,20 @@ public class MainActivity extends AppCompatActivity
 
     /** Podmienia widoczny fragment bez re-tworzenia ukrytych. */
     private void showFragment(Fragment fragment) {
-        if (fragment == activeFragment) return;
-        getSupportFragmentManager().beginTransaction()
-                .hide(activeFragment)
-                .show(fragment)
-                .commit();
+        if (fragment == null) return;
+        Fragment preview = getSupportFragmentManager().findFragmentByTag("import_preview");
+        if (preview != null) {
+            if (viewModel != null) {
+                viewModel.clearPendingImport();
+            }
+            getSupportFragmentManager().popBackStackImmediate();
+        }
+        if (fragment == activeFragment && !fragment.isHidden()) return;
+        androidx.fragment.app.FragmentTransaction tx = getSupportFragmentManager().beginTransaction();
+        if (activeFragment != null && activeFragment != fragment) {
+            tx.hide(activeFragment);
+        }
+        tx.show(fragment).commit();
         activeFragment = fragment;
     }
 
@@ -184,6 +212,11 @@ public class MainActivity extends AppCompatActivity
         if (drawerLayout.isDrawerOpen(androidx.core.view.GravityCompat.START)) {
             drawerLayout.closeDrawer(androidx.core.view.GravityCompat.START);
         } else {
+            Fragment preview = getSupportFragmentManager().findFragmentByTag("import_preview");
+            if (preview != null && preview.isVisible()) {
+                MainViewModel viewModel = new androidx.lifecycle.ViewModelProvider(this).get(MainViewModel.class);
+                viewModel.clearPendingImport();
+            }
             super.onBackPressed();
         }
     }
@@ -279,6 +312,7 @@ public class MainActivity extends AppCompatActivity
      */
     private void openShiftByIdOrDate(int shiftId, String date) {
         // Przełącz na Grafik przez drawer
+        selectedNavId = R.id.nav_schedule;
         showFragment(scheduleFragment);
         navigationView.setCheckedItem(R.id.nav_schedule);
 

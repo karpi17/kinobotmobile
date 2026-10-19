@@ -121,5 +121,17 @@ public class ExcelParserIntegrationTest {
         // 3. Sprawdzamy GlobalShifts
         List<GlobalShift> allGlobal = result.getAllGlobalShifts();
         assertEquals(5, allGlobal.size()); // 3 dni dla Kacpra + 2 dni pracy dla Anny (1 off pominięty)
+
+        // 4. Sprawdzamy scheduleByName dla współpracowników (Anna ma 2 zmiany robocze)
+        assertNotNull(result.getScheduleByName().get("Anna"));
+        assertEquals(2, result.getScheduleByName().get("Anna").size());
+
+        // 5. Sprawdzamy dla Anny jako targetUser, że dzień WOLNE (off) ma nie-nullowy closingCrew ("")
+        ByteArrayInputStream isAnna = createMockExcelSchedule();
+        ScheduleParseResult resAnna = parser.parse(isAnna, new ScheduleParseOptions("Anna", "Obsługa", 2026, true));
+        Shift annaDay2 = resAnna.getTargetUserShifts().get(1);
+        assertEquals("WOLNE", annaDay2.getDescription());
+        assertNotNull(annaDay2.getClosingCrew());
+        assertEquals("", annaDay2.getClosingCrew());
     }
 }

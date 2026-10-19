@@ -100,7 +100,11 @@ public class ShiftRepository {
      * Alarm zaplanuje się automatycznie przez obserwatora LiveData w MainActivity.
      */
     public void insert(Shift shift) {
-        executor.execute(() -> shiftDao.insert(shift));
+        executor.execute(() -> {
+            shiftDao.insert(shift);
+            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(application);
+            com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(application);
+        });
     }
 
     /**
@@ -111,16 +115,34 @@ public class ShiftRepository {
         executor.execute(() -> {
             shiftDao.update(shift);
             NotificationScheduler.rescheduleForShift(application, shift);
+            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(application);
+            com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(application);
         });
     }
 
     /**
-     * Usuwa podaną zmianę i anuluje przypisane do niej alarmy.
+     * Usuwa podaną zmianę i anuluje przypisane do niej alarmy (zarówno powiadomienia jak i budzik pełnoekranowy).
      */
     public void delete(Shift shift) {
         executor.execute(() -> {
             NotificationScheduler.cancelAlarmsForShift(application, shift);
+            try {
+                AppDatabase db = AppDatabase.getInstance(application);
+                String userName = application.getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE)
+                        .getString("user_name", "");
+                com.asystent.kinowy.models.GlobalShift gs = userName.isEmpty()
+                        ? db.globalShiftDao().getShiftByDateAndStart(shift.getDate(), shift.getStartTime())
+                        : db.globalShiftDao().getShiftByDateStartAndUser(shift.getDate(), shift.getStartTime(), userName);
+                if (gs != null && gs.isHasAlarm()) {
+                    com.asystent.kinowy.alarm.AlarmScheduler.cancelAlarm(application, gs);
+                    gs.setHasAlarm(false);
+                    gs.setAlarmOffsetMinutes(0);
+                    db.globalShiftDao().updateGlobalShift(gs);
+                }
+            } catch (Exception ignored) {}
             shiftDao.delete(shift);
+            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(application);
+            com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(application);
         });
     }
 
@@ -130,10 +152,22 @@ public class ShiftRepository {
      * (pusta lista → brak planowania).
      */
     public void deleteAll() {
-        executor.execute(shiftDao::deleteAll);
+        executor.execute(() -> {
+            shiftDao.deleteAll();
+            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(application);
+            com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(application);
+        });
     }
 
     // ─── Metody synchroniczne (wywoływać TYLKO z wątku w tle) ────────────────
+
+    /**
+     * Pobiera synchronicznie wszystkie zmiany z bazy danych.
+     * Wywoływać wyłącznie z wątku w tle.
+     */
+    public List<Shift> getAllShiftsSync() {
+        return shiftDao.getAllShiftsSync();
+    }
 
     /**
      * Wstawia zmianę synchronicznie (blokująco) — używać wyłącznie z wątku Executor.

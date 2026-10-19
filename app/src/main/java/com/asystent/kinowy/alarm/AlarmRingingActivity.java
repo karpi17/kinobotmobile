@@ -237,6 +237,16 @@ public class AlarmRingingActivity extends AppCompatActivity {
         Log.i(TAG, "💤 snoozeAlarm() CALLED — użytkownik kliknął DRZEMKA");
         stopMediaAndVibration();
 
+        int shiftId = getIntent().getIntExtra(EXTRA_SHIFT_ID, -1);
+        if (shiftId != -1) {
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                    getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.cancel(shiftId);
+                Log.i(TAG, "🗑️ Powiadomienie #" + shiftId + " anulowane przy drzemce.");
+            }
+        }
+
         String start = getIntent().getStringExtra(EXTRA_SHIFT_START);
         String date = getIntent().getStringExtra(EXTRA_SHIFT_DATE);
         String category = getIntent().getStringExtra(EXTRA_SHIFT_CATEGORY);

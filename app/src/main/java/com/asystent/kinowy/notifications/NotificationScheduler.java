@@ -42,7 +42,7 @@ public class NotificationScheduler {
         if (alarmManager == null) return;
 
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        int notifyBeforeMinutes = prefs.getInt(PREF_NOTIFY_BEFORE, 60);
+        int notifyBeforeMinutes = prefs.getInt(PREF_NOTIFY_BEFORE, 30);
 
         LocalDateTime now = LocalDateTime.now();
 
@@ -106,7 +106,7 @@ public class NotificationScheduler {
         if (alarmManager == null) return;
 
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        int notifyBeforeMinutes = prefs.getInt(PREF_NOTIFY_BEFORE, 60);
+        int notifyBeforeMinutes = prefs.getInt(PREF_NOTIFY_BEFORE, 30);
         LocalDateTime now = LocalDateTime.now();
 
         if (shift.getDate() == null || shift.getStartTime() == null || shift.getEndTime() == null) return;

@@ -27,6 +27,7 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
     private String coworkersText; // sformatowana lista współpracowników
     private double barHours = 0;
     private double owHours = 0;
+    private java.util.Map<String, Double> categoryHours = new java.util.LinkedHashMap<>();
 
     public void updateNextShift(Shift shift) {
         this.nextShift = shift;
@@ -36,6 +37,19 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
     public void updateAnalytics(double bar, double ow) {
         this.barHours = bar;
         this.owHours = ow;
+        this.categoryHours.clear();
+        if (bar > 0) this.categoryHours.put("BAR", bar);
+        if (ow > 0) this.categoryHours.put("OW", ow);
+        notifyItemChanged(TYPE_ANALYTICS);
+    }
+
+    public void updateAnalytics(java.util.Map<String, Double> categories) {
+        this.categoryHours.clear();
+        if (categories != null) {
+            this.categoryHours.putAll(categories);
+        }
+        this.barHours = this.categoryHours.getOrDefault("BAR", 0.0);
+        this.owHours = this.categoryHours.getOrDefault("OW", 0.0);
         notifyItemChanged(TYPE_ANALYTICS);
     }
 
@@ -65,7 +79,7 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
         if (getItemViewType(position) == TYPE_SHIFT) {
             ((ShiftViewHolder) holder).bind(nextShift, coworkersText);
         } else {
-            ((AnalyticsViewHolder) holder).bind(barHours, owHours);
+            ((AnalyticsViewHolder) holder).bind(categoryHours, barHours, owHours);
         }
     }
 
@@ -144,6 +158,15 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
         PieChart pieChart;
         TextView tvFraction;
 
+        private static final int[] PALETTE = new int[]{
+                android.graphics.Color.parseColor("#FF6600"),
+                android.graphics.Color.parseColor("#2196F3"),
+                android.graphics.Color.parseColor("#9C27B0"),
+                android.graphics.Color.parseColor("#4CAF50"),
+                android.graphics.Color.parseColor("#FFC107"),
+                android.graphics.Color.parseColor("#607D8B")
+        };
+
         public AnalyticsViewHolder(@NonNull View itemView) {
             super(itemView);
             pieChart = itemView.findViewById(R.id.chart_hours_donut);
@@ -160,8 +183,8 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
             pieChart.setHoleColor(android.graphics.Color.TRANSPARENT);
             pieChart.setTransparentCircleRadius(0f);
             pieChart.setDrawCenterText(true);
-            pieChart.setCenterText("BAR vs OW");
-            pieChart.setCenterTextSize(16f);
+            pieChart.setCenterText("Stanowiska");
+            pieChart.setCenterTextSize(15f);
             pieChart.setCenterTextColor(android.graphics.Color.WHITE);
             pieChart.getLegend().setEnabled(false);
             pieChart.setRotationEnabled(false);
@@ -169,26 +192,35 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
             pieChart.setDrawEntryLabels(false);
         }
 
-        void bind(double bar, double ow) {
-            // Ensure at least a placeholder slice when both are zero
-            float barVal = (float) bar;
-            float owVal  = (float) ow;
-            if (barVal <= 0 && owVal <= 0) {
-                barVal = 1f;
-                owVal  = 1f;
+        void bind(java.util.Map<String, Double> categoryHours, double bar, double ow) {
+            ArrayList<PieEntry> entries = new ArrayList<>();
+            ArrayList<Integer> colors = new ArrayList<>();
+            StringBuilder summary = new StringBuilder();
+
+            if (categoryHours != null && !categoryHours.isEmpty()) {
+                int colorIdx = 0;
+                for (java.util.Map.Entry<String, Double> entry : categoryHours.entrySet()) {
+                    double val = entry.getValue() != null ? entry.getValue() : 0.0;
+                    if (val <= 0) continue;
+                    entries.add(new PieEntry((float) val, entry.getKey()));
+                    colors.add(PALETTE[colorIdx % PALETTE.length]);
+                    colorIdx++;
+                    if (summary.length() > 0) summary.append("  |  ");
+                    summary.append(String.format(java.util.Locale.US, "%s: %.1fh", entry.getKey(), val));
+                }
             }
 
-            ArrayList<PieEntry> entries = new ArrayList<>();
-            entries.add(new PieEntry(barVal, "BAR"));
-            entries.add(new PieEntry(owVal,  "OW"));
+            if (entries.isEmpty()) {
+                entries.add(new PieEntry(1f, "BAR"));
+                entries.add(new PieEntry(1f, "OW"));
+                colors.add(PALETTE[0]);
+                colors.add(android.graphics.Color.parseColor("#222222"));
+                summary.append(String.format(java.util.Locale.US, "BAR: %.1fh  |  OW: %.1fh", bar, ow));
+            }
 
             PieDataSet dataSet = new PieDataSet(entries, "");
             dataSet.setDrawValues(false);
             dataSet.setSliceSpace(2f);
-
-            ArrayList<Integer> colors = new ArrayList<>();
-            colors.add(android.graphics.Color.parseColor("#FF6600")); // BAR — neonowy pomarańcz
-            colors.add(android.graphics.Color.parseColor("#222222")); // OW  — ciemny szary
             dataSet.setColors(colors);
 
             PieData data = new PieData(dataSet);
@@ -196,8 +228,7 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
             pieChart.invalidate();
 
             if (tvFraction != null) {
-                tvFraction.setText(String.format(java.util.Locale.US,
-                        "BAR: %.1fh  |  OW: %.1fh", bar, ow));
+                tvFraction.setText(summary.toString());
             }
         }
     }

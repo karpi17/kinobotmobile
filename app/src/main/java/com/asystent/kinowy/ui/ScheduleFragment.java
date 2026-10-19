@@ -114,6 +114,11 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             btnExport.setOnClickListener(v -> handleExportClick());
         }
 
+        com.google.android.material.button.MaterialButton btnManagerDayView = view.findViewById(R.id.btn_manager_day_view);
+        if (btnManagerDayView != null) {
+            btnManagerDayView.setOnClickListener(v -> showManagerDayPicker());
+        }
+
         // --- Obserwuj dane ---
         viewModel.getMonthlyShifts().observe(getViewLifecycleOwner(), shifts -> {
             if (shifts == null || shifts.isEmpty()) {
@@ -130,6 +135,124 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
     @Override
     public void onShiftClick(Shift shift) {
         showShiftDialog(shift);
+    }
+
+    private void showManagerDayPicker() {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        java.time.YearMonth selectedYm = viewModel.getCurrentSelectedMonth().getValue();
+        int year = selectedYm != null ? selectedYm.getYear() : cal.get(java.util.Calendar.YEAR);
+        int month = selectedYm != null ? selectedYm.getMonthValue() - 1 : cal.get(java.util.Calendar.MONTH);
+        int day = cal.get(java.util.Calendar.DAY_OF_MONTH);
+        new android.app.DatePickerDialog(requireContext(), (view, y, m, d) -> {
+            String dateStr = String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d);
+            showFullDayCrewDialog(dateStr);
+        }, year, month, Math.min(day, 28)).show();
+    }
+
+    private void showFullDayCrewDialog(String dateStr) {
+        if (!isAdded()) return;
+        Executors.newSingleThreadExecutor().execute(() -> {
+            List<GlobalShift> dailyShifts = viewModel.getGlobalShiftsByDate(dateStr);
+            if (!isAdded() || getActivity() == null) return;
+            getActivity().runOnUiThread(() -> {
+                if (!isAdded()) return;
+                LinearLayout container = new LinearLayout(requireContext());
+                container.setOrientation(LinearLayout.VERTICAL);
+                container.setPadding(32, 24, 32, 16);
+
+                RecyclerView rv = new RecyclerView(requireContext());
+                rv.setLayoutManager(new LinearLayoutManager(requireContext()));
+                final CoworkerAdapter[] cwHolder = new CoworkerAdapter[1];
+                CoworkerAdapter cwAdapter = new CoworkerAdapter((gs, pos) -> {
+                    showCoworkerEditDialog(gs, pos, cwHolder[0], rv, () -> {
+                        Executors.newSingleThreadExecutor().execute(() -> {
+                            List<GlobalShift> refreshed = viewModel.getGlobalShiftsByDate(dateStr);
+                            if (isAdded() && getActivity() != null) {
+                                getActivity().runOnUiThread(() -> cwHolder[0].setData(refreshed, refreshed));
+                            }
+                        });
+                    });
+                });
+                cwHolder[0] = cwAdapter;
+                rv.setAdapter(cwAdapter);
+                cwAdapter.setData(dailyShifts, dailyShifts);
+
+                if (dailyShifts == null || dailyShifts.isEmpty()) {
+                    TextView tvNone = new TextView(requireContext());
+                    tvNone.setText("Brak zapisanej obsady w globalnym grafiku na dzień " + dateStr + ".");
+                    tvNone.setTextColor(0xFFAAAAAA);
+                    tvNone.setPadding(8, 16, 8, 16);
+                    container.addView(tvNone);
+                }
+                container.addView(rv, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, 650));
+
+                new AlertDialog.Builder(requireContext())
+                        .setTitle("👥 Obsada dnia: " + dateStr)
+                        .setView(container)
+                        .setNeutralButton("+ Dodaj osobę", (d, w) -> {
+                            showAddCoworkerDialog(dateStr, "09:00", "17:00", container, rv, cwAdapter, true);
+                        })
+                        .setPositiveButton("Zamknij", null)
+                        .show();
+            });
+        });
+    }
+
+    private void showReplacementCandidatesDialog(String dateStr, String startStr, String endStr, String category) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            android.widget.Toast.makeText(requireContext(), "Najpierw wybierz datę zmiany", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!isAdded()) return;
+        final android.content.Context ctx = requireContext().getApplicationContext();
+        final List<String> suggestionsSnapshot = viewModel.getClosingCrewSuggestions().getValue();
+
+        Executors.newSingleThreadExecutor().execute(() -> {
+            List<GlobalShift> allGlobal = viewModel.getAllGlobalShiftsSync();
+            String myName = ctx.getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE)
+                    .getString("user_name", "");
+            List<com.asystent.kinowy.utils.ReplacementFinder.Candidate> candidates =
+                    com.asystent.kinowy.utils.ReplacementFinder.findCandidates(
+                            dateStr, startStr, endStr, myName, suggestionsSnapshot, allGlobal);
+            String messengerText = com.asystent.kinowy.utils.ReplacementFinder.buildMessengerMessage(
+                    dateStr, startStr, endStr, category);
+
+            if (!isAdded() || getActivity() == null) return;
+            getActivity().runOnUiThread(() -> {
+                if (!isAdded()) return;
+                StringBuilder sb = new StringBuilder();
+                if (candidates.isEmpty()) {
+                    sb.append("Brak dostępnych kandydatów w bazie (wszyscy pracują lub mieliby naruszenie 11h odpoczynku BHP).\n\n");
+                } else {
+                    sb.append("Osoby mające wolne i bezpieczną przerwę BHP (≥11h):\n\n");
+                    for (com.asystent.kinowy.utils.ReplacementFinder.Candidate c : candidates) {
+                        sb.append("✅ ").append(c.getName())
+                          .append(" — ").append(c.getNote()).append("\n");
+                    }
+                    sb.append("\n");
+                }
+                sb.append("────────────────────\n");
+                sb.append("Gotowa wiadomość na Messenger:\n").append(messengerText);
+
+                new AlertDialog.Builder(requireContext())
+                        .setTitle("🔍 Kto może wziąć zmianę? (" + dateStr + ")")
+                        .setMessage(sb.toString().trim())
+                        .setPositiveButton("📋 Kopiuj wiadomość", (d, w) -> {
+                            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
+                                    requireContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                            if (clipboard != null) {
+                                android.content.ClipData clip = android.content.ClipData.newPlainText(
+                                        "Zastępstwo KinoBot", messengerText);
+                                clipboard.setPrimaryClip(clip);
+                                android.widget.Toast.makeText(requireContext(),
+                                        "Skopiowano wiadomość do schowka!", android.widget.Toast.LENGTH_SHORT).show();
+                            }
+                        })
+                        .setNegativeButton("Zamknij", null)
+                        .show();
+            });
+        });
     }
 
     private void handleExportClick() {
@@ -169,62 +292,73 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
     // REFRESH — odświeżanie sekcji współpracowników (via ShiftUtils)
     // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Pobiera globalny grafik dla podanej daty (w tle),
-     * oblicza overlap z [myStart, myEnd] i aktualizuje RecyclerView współpracowników.
-     * <p>
-     * Deleguje logikę overlap do {@link com.asystent.kinowy.utils.ShiftUtils}.
-     * Każdy element jest klikalny — otwiera dialog edycji godzin.
-     */
     private void refreshCoworkersSection(
             String date, String myStart, String myEnd,
             LinearLayout sectionLayout, RecyclerView rvCoworkers,
             CoworkerAdapter coworkerAdapter) {
+        refreshCoworkersSection(date, myStart, myEnd, sectionLayout, rvCoworkers, coworkerAdapter, false);
+    }
 
-        if (date == null || date.isEmpty()
-                || myStart == null || myStart.isEmpty()
-                || myEnd == null || myEnd.isEmpty()) {
+    private void refreshCoworkersSection(
+            String date, String myStart, String myEnd,
+            LinearLayout sectionLayout, RecyclerView rvCoworkers,
+            CoworkerAdapter coworkerAdapter, boolean forceFullDay) {
+
+        if (date == null || date.isEmpty()) {
             sectionLayout.setVisibility(View.GONE);
             return;
         }
 
-        // Pobierz Context PRZED wejściem w wątek tła — requireContext() rzuca
-        // IllegalStateException jeśli fragment jest odpięty (np. user przełączy zakładkę)
         if (!isAdded()) return;
         final android.content.Context ctx = requireContext().getApplicationContext();
+        final boolean hasMyHours = myStart != null && !myStart.trim().isEmpty()
+                && myEnd != null && !myEnd.trim().isEmpty();
+        final boolean fullDayMode = forceFullDay || !hasMyHours;
 
         Executors.newSingleThreadExecutor().execute(() -> {
             List<GlobalShift> dailyShifts = viewModel.getGlobalShiftsByDate(date);
-            List<GlobalShift> overlapping = com.asystent.kinowy.utils.ShiftUtils
-                    .getOverlappingShifts(myStart, myEnd, dailyShifts);
+            List<GlobalShift> displayList;
 
-            // Odfiltruj własne imię — czytamy z ctx (Application Context = zawsze bezpieczny)
-            String myName = ctx
-                    .getSharedPreferences("asystent_kinowy_prefs",
-                            android.content.Context.MODE_PRIVATE)
-                    .getString("user_name", "").trim();
-            if (!myName.isEmpty() && overlapping != null) {
-                List<GlobalShift> filtered = new ArrayList<>();
-                for (GlobalShift gs : overlapping) {
-                    if (!myName.equalsIgnoreCase(
-                            gs.getName() != null ? gs.getName().trim() : "")) {
-                        filtered.add(gs);
+            if (fullDayMode) {
+                displayList = new ArrayList<>();
+                if (dailyShifts != null) {
+                    for (GlobalShift gs : dailyShifts) {
+                        if (gs != null && !gs.isDeleted()
+                                && gs.getStartTime() != null && !gs.getStartTime().trim().isEmpty()) {
+                            displayList.add(gs);
+                        }
                     }
                 }
-                overlapping = filtered;
+            } else {
+                List<GlobalShift> overlapping = com.asystent.kinowy.utils.ShiftUtils
+                        .getOverlappingShifts(myStart, myEnd, dailyShifts);
+                String myName = ctx
+                        .getSharedPreferences("asystent_kinowy_prefs",
+                                android.content.Context.MODE_PRIVATE)
+                        .getString("user_name", "").trim();
+                displayList = new ArrayList<>();
+                if (overlapping != null) {
+                    for (GlobalShift gs : overlapping) {
+                        if (myName.isEmpty() || !myName.equalsIgnoreCase(
+                                gs.getName() != null ? gs.getName().trim() : "")) {
+                            displayList.add(gs);
+                        }
+                    }
+                }
             }
 
-            // Aktualizuj UI na main thread — sprawdź isAdded() ponownie
-            final List<GlobalShift> finalList = overlapping;
+            final List<GlobalShift> finalList = displayList;
             if (isAdded() && getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
-                    if (!isAdded()) return; // fragment mógł zostać odpięty zanim runOnUiThread wykonał
-                    if (finalList == null || finalList.isEmpty()) {
-                        sectionLayout.setVisibility(View.GONE);
-                    } else {
-                        sectionLayout.setVisibility(View.VISIBLE);
-                        coworkerAdapter.setData(finalList);
+                    if (!isAdded()) return;
+                    sectionLayout.setVisibility(View.VISIBLE);
+                    TextView tvTitle = sectionLayout.findViewById(R.id.tv_coworkers_section_title);
+                    if (tvTitle != null) {
+                        tvTitle.setText(fullDayMode
+                                ? "👥 Pełna obsada dnia (" + finalList.size() + ")"
+                                : "👥 Współpracownicy w tym czasie (" + finalList.size() + ")");
                     }
+                    coworkerAdapter.setData(finalList, dailyShifts);
                 });
             }
         });
@@ -233,18 +367,11 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
 
     /**
      * Pokazuje dialog edycji godzin współpracownika.
-     * <p>
-     * Umożliwia zmianę godziny startu/końca (ustawia isManuallyEdited = true)
-     * lub usunięcie współpracownika z globalnego grafiku.
      */
     private void showCoworkerEditDialog(GlobalShift gs, int position,
                                          CoworkerAdapter adapter,
                                          RecyclerView rvCoworkers,
                                          Runnable refreshAll) {
-        View editView = LayoutInflater.from(requireContext())
-                .inflate(R.layout.dialog_shift, null); // Reuse time picker approach
-
-        // Tworzymy prosty layout programowo
         LinearLayout layout = new LinearLayout(requireContext());
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(48, 32, 48, 16);
@@ -316,7 +443,6 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                     viewModel.updateGlobalShift(gs);
                     adapter.updateAt(position, gs);
 
-                    // Pełne odświeżenie po krótkim opóźnieniu (dajemy czas na zapis)
                     rvCoworkers.postDelayed(refreshAll::run, 300);
                 })
                 .setNeutralButton("Usuń ze zmiany", (dialog, which) -> {
@@ -329,43 +455,28 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 .show();
     }
 
-    // Data aktualnie otwartej zmiany — potrzebna do showAddCoworkerDialog
     private String currentShiftDate;
 
-    /**
-     * Dialog dodawania nowego współpracownika do zmiany.
-     * <p>
-     * Influje {@code dialog_add_coworker.xml}, waliduje imię,
-     * tworzy {@link GlobalShift} z {@code isManuallyEdited = true}
-     * i wstawia go do bazy Room przez {@link MainViewModel#insertGlobalShift}.
-     * <p>
-     * Pole imienia korzysta z {@link android.widget.AutoCompleteTextView}
-     * zasilanego słownikiem pracowników z {@code global_shifts} (LiveData).
-     * <p>
-     * Po udanym insercie natychmiast odświeża listę współpracowników.
-     *
-     * @param shiftDate      data zmiany (yyyy-MM-dd)
-     * @param myStart        godzina startu użytkownika (do odświeżenia overlapów)
-     * @param myEnd          godzina końca użytkownika
-     * @param layoutSection  sekcja współpracowników (do show/hide)
-     * @param rvCoworkers    RecyclerView z listą
-     * @param cwAdapter      adapter CoworkerAdapter
-     */
     private void showAddCoworkerDialog(
             String shiftDate, String myStart, String myEnd,
             LinearLayout layoutSection, RecyclerView rvCoworkers,
             CoworkerAdapter cwAdapter) {
+        showAddCoworkerDialog(shiftDate, myStart, myEnd, layoutSection, rvCoworkers, cwAdapter, false);
+    }
+
+    private void showAddCoworkerDialog(
+            String shiftDate, String myStart, String myEnd,
+            LinearLayout layoutSection, RecyclerView rvCoworkers,
+            CoworkerAdapter cwAdapter, boolean forceFullDay) {
 
         View addView = LayoutInflater.from(requireContext())
                 .inflate(R.layout.dialog_add_coworker, null);
 
-        // ═════ Pola formularza ═════
         android.widget.AutoCompleteTextView etName = addView.findViewById(R.id.et_new_coworker_name);
         android.widget.EditText etStart = addView.findViewById(R.id.et_new_coworker_start);
         android.widget.EditText etEnd = addView.findViewById(R.id.et_new_coworker_end);
         android.widget.EditText etPosition = addView.findViewById(R.id.et_new_coworker_position);
 
-        // ═════ AutoComplete: słownik współpracowników (LiveData) ═════
         android.widget.ArrayAdapter<String> nameAdapter = new android.widget.ArrayAdapter<>(
                 requireContext(),
                 android.R.layout.simple_dropdown_item_1line,
@@ -374,7 +485,6 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         etName.setAdapter(nameAdapter);
         etName.setThreshold(1);
 
-        // Obserwuj sugestie z ViewModelu (ten sam mechanizm co ekipa zamykająca)
         viewModel.getClosingCrewSuggestions().observe(getViewLifecycleOwner(), suggestions -> {
             if (suggestions != null) {
                 nameAdapter.clear();
@@ -383,7 +493,6 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             }
         });
 
-        // ═════ TimePicker na polach godzinowych ═════
         etStart.setFocusable(false);
         etStart.setOnClickListener(v -> {
             java.util.Calendar cal = java.util.Calendar.getInstance();
@@ -400,12 +509,10 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             }, cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), true).show();
         });
 
-        // ═════ Dialog Builder ═════
         new AlertDialog.Builder(requireContext())
                 .setTitle("➕ Dodaj współpracownika")
                 .setView(addView)
                 .setPositiveButton("Dodaj", (dialog, which) -> {
-                    // ═════ Pobierz dane ═════
                     String name = etName.getText() != null
                             ? etName.getText().toString().trim() : "";
                     String startTime = etStart.getText() != null
@@ -415,14 +522,12 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                     String position = etPosition.getText() != null
                             ? etPosition.getText().toString().trim() : "";
 
-                    // ═════ Walidacja ═════
                     if (name.isEmpty()) {
                         android.widget.Toast.makeText(requireContext(),
                                 "Podaj imię współpracownika", android.widget.Toast.LENGTH_SHORT).show();
                         return;
                     }
 
-                    // Walidacja formatu godzin — muszą być HH:mm albo puste
                     if (!startTime.isEmpty() && !startTime.matches("\\d{2}:\\d{2}")) {
                         android.widget.Toast.makeText(requireContext(),
                                 "Zły format godziny startu (np. 08:00)", android.widget.Toast.LENGTH_SHORT).show();
@@ -434,29 +539,28 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                         return;
                     }
 
-                    // Domyślne godziny jeśli puste
-                    if (startTime.isEmpty()) startTime = myStart;
-                    if (endTime.isEmpty()) endTime = myEnd;
+                    if (startTime.isEmpty()) startTime = (myStart != null && !myStart.isEmpty()) ? myStart : "09:00";
+                    if (endTime.isEmpty()) endTime = (myEnd != null && !myEnd.isEmpty()) ? myEnd : "17:00";
 
-                    // Stanowisko — domyślnie UNKNOWN
                     String category = position.isEmpty() ? "UNKNOWN" : position.toUpperCase();
 
-                    // ═════ Buduj GlobalShift ═════
                     GlobalShift newGs = new GlobalShift(
                             name, shiftDate, startTime, endTime, category);
-                    newGs.setManuallyEdited(true); // KRYTYCZNE: ochrona przed parserem
+                    newGs.setManuallyEdited(true);
 
-                    // ═════ Async insert + refresh UI ═════
-                    // insertGlobalShift zwraca rowId: -1 = duplikat (Room UNIQUE IGNORE)
+                    final String effMyStart = startTime;
+                    final String effMyEnd = endTime;
                     viewModel.insertGlobalShift(newGs, (rowId) -> {
                         if (rowId == -1L) {
                             android.widget.Toast.makeText(requireContext(),
-                                    name + " jest już na tej zmianie", android.widget.Toast.LENGTH_SHORT).show();
+                                     name + " jest już na tej zmianie", android.widget.Toast.LENGTH_SHORT).show();
                             return;
                         }
                         refreshCoworkersSection(
-                                shiftDate, myStart, myEnd,
-                                layoutSection, rvCoworkers, cwAdapter);
+                                shiftDate,
+                                (myStart != null && !myStart.isEmpty()) ? myStart : effMyStart,
+                                (myEnd != null && !myEnd.isEmpty()) ? myEnd : effMyEnd,
+                                layoutSection, rvCoworkers, cwAdapter, forceFullDay);
                         android.widget.Toast.makeText(requireContext(),
                                 "Dodano: " + name, android.widget.Toast.LENGTH_SHORT).show();
                     });
@@ -465,20 +569,14 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 .show();
     }
 
-    /**
-     * Pokazuje dialog dodawania lub edycji zmiany.
-     * @param shift Zmiana do edycji, lub null jeśli dodajemy nową.
-     */
-    /**
-     * Publiczne API dla MainActivity — otwiera dialog edycji danej zmiany.
-     * Używane przez deep-link z widgetu stack po kliknięciu w kartę.
-     */
     public void openShiftDialog(@Nullable Shift shift) {
         showShiftDialog(shift);
     }
 
     private void showShiftDialog(@Nullable Shift shift) {
         boolean isEdit = shift != null;
+        final String originalDate = (isEdit && shift.getDate() != null) ? shift.getDate() : "";
+        final String originalStartTime = (isEdit && shift.getStartTime() != null) ? shift.getStartTime() : "";
 
         // Inflate custom view for dialog
         View dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_shift, null);
@@ -487,8 +585,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         TextInputEditText etEnd = dialogView.findViewById(R.id.et_shift_end);
         android.widget.AutoCompleteTextView etCategory = dialogView.findViewById(R.id.et_shift_category);
         
-        // ═════ Konfiguracja predefiniowanych stanowisk ═════
-        String[] defaultCategories = new String[]{"BAR", "OW", "SP"};
+        String[] defaultCategories = new String[]{"BAR", "OW", "SP", "ZAMEK", "OBSŁUGA"};
         android.widget.ArrayAdapter<String> categoryAdapter = new android.widget.ArrayAdapter<>(
                 requireContext(),
                 android.R.layout.simple_dropdown_item_1line,
@@ -499,13 +596,24 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         TextInputLayout tilClosingCrew = dialogView.findViewById(R.id.til_closing_crew);
         android.widget.MultiAutoCompleteTextView etClosingCrew = dialogView.findViewById(R.id.et_closing_crew);
         SwitchMaterial swReplacement = dialogView.findViewById(R.id.switch_replacement);
+        com.google.android.material.button.MaterialButton btnFindReplacement =
+                dialogView.findViewById(R.id.btn_find_replacement);
+
+        if (btnFindReplacement != null) {
+            btnFindReplacement.setOnClickListener(v -> {
+                String d = etDate.getText() != null ? etDate.getText().toString().trim() : "";
+                String s = etStart.getText() != null ? etStart.getText().toString().trim() : "";
+                String e = etEnd.getText() != null ? etEnd.getText().toString().trim() : "";
+                String c = etCategory.getText() != null ? etCategory.getText().toString().trim() : "";
+                showReplacementCandidatesDialog(d, s, e, c);
+            });
+        }
 
         // ═════ Sekcja Budzika ═════
         SwitchMaterial swAlarm = dialogView.findViewById(R.id.switch_alarm);
         TextInputLayout tilAlarmOffset = dialogView.findViewById(R.id.til_alarm_offset);
         android.widget.AutoCompleteTextView etAlarmOffset = dialogView.findViewById(R.id.et_alarm_offset);
 
-        // Predefiniowane opcje wyprzedzenia
         String[] alarmOffsetOptions = new String[]{"30 min", "60 min", "90 min", "120 min"};
         android.widget.ArrayAdapter<String> alarmOffsetAdapter = new android.widget.ArrayAdapter<>(
                 requireContext(),
@@ -513,13 +621,11 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 alarmOffsetOptions
         );
         etAlarmOffset.setAdapter(alarmOffsetAdapter);
-        etAlarmOffset.setText("60 min", false); // Domyślnie 60 min
+        etAlarmOffset.setText("60 min", false);
 
-        // Logika widoczności: pole minut widoczne tylko gdy Switch ON
         swAlarm.setOnCheckedChangeListener((buttonView, isChecked) -> {
             tilAlarmOffset.setVisibility(isChecked ? View.VISIBLE : View.GONE);
 
-            // Android 14+ — sprawdź uprawnienie USE_FULL_SCREEN_INTENT
             if (isChecked && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 android.app.NotificationManager nm = (android.app.NotificationManager)
                         requireContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE);
@@ -538,23 +644,40 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             }
         });
 
-        // Sekcja współpracowników (Overlap — edytowalna lista)
+        // Sekcja współpracowników (Overlap lub Cały dzień — Tryb Kierownika)
         LinearLayout layoutCoworkers = dialogView.findViewById(R.id.layout_coworkers_section);
         RecyclerView rvCoworkers = dialogView.findViewById(R.id.rv_coworkers_list);
+        com.google.android.material.button.MaterialButton btnToggleFullDay =
+                dialogView.findViewById(R.id.btn_toggle_full_day_crew);
+        final boolean[] showFullDayCrew = new boolean[]{false};
+
         final CoworkerAdapter[] adapterHolder = new CoworkerAdapter[1];
         CoworkerAdapter coworkerAdapter = new CoworkerAdapter((gs, pos) -> {
             showCoworkerEditDialog(gs, pos, adapterHolder[0], rvCoworkers, () -> {
-                // Pełne odświeżenie po edycji/usunięciu
                 String d2 = etDate.getText() != null ? etDate.getText().toString().trim() : "";
                 String s2 = etStart.getText() != null ? etStart.getText().toString().trim() : "";
                 String e2 = etEnd.getText() != null ? etEnd.getText().toString().trim() : "";
-                refreshCoworkersSection(d2, s2, e2, layoutCoworkers, rvCoworkers, adapterHolder[0]);
+                refreshCoworkersSection(d2, s2, e2, layoutCoworkers, rvCoworkers, adapterHolder[0], showFullDayCrew[0]);
             });
         });
         adapterHolder[0] = coworkerAdapter;
         rvCoworkers.setLayoutManager(new LinearLayoutManager(requireContext()));
         rvCoworkers.setAdapter(coworkerAdapter);
-        // rvCoworkersRef usunięty — rvCoworkers przekazywany bezpośrednio przez Runnable
+
+        Runnable refreshCoworkers = () -> {
+            String d = etDate.getText() != null ? etDate.getText().toString().trim() : "";
+            String s = etStart.getText() != null ? etStart.getText().toString().trim() : "";
+            String e = etEnd.getText() != null ? etEnd.getText().toString().trim() : "";
+            refreshCoworkersSection(d, s, e, layoutCoworkers, rvCoworkers, coworkerAdapter, showFullDayCrew[0]);
+        };
+
+        if (btnToggleFullDay != null) {
+            btnToggleFullDay.setOnClickListener(v -> {
+                showFullDayCrew[0] = !showFullDayCrew[0];
+                btnToggleFullDay.setText(showFullDayCrew[0] ? "W moim czasie" : "Cały dzień");
+                refreshCoworkers.run();
+            });
+        }
 
         // ═════ Przycisk: Dodaj współpracownika ═════
         android.widget.Button btnAddCoworker = dialogView.findViewById(R.id.btn_add_coworker);
@@ -570,7 +693,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             }
 
             showAddCoworkerDialog(date, start, end,
-                    layoutCoworkers, rvCoworkers, coworkerAdapter);
+                    layoutCoworkers, rvCoworkers, coworkerAdapter, showFullDayCrew[0]);
         });
 
         // ═════ Setup MultiAutoComplete z CommaTokenizer ═════
@@ -582,7 +705,6 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         );
         etClosingCrew.setAdapter(crewAdapter);
 
-        // Obserwuj sugestie z ViewModelu i aktualizuj adapter
         viewModel.getClosingCrewSuggestions().observe(getViewLifecycleOwner(), suggestions -> {
             if (suggestions != null) {
                 crewAdapter.clear();
@@ -590,14 +712,6 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 crewAdapter.notifyDataSetChanged();
             }
         });
-
-        // ═════ Helper lambda: odśwież współpracowników ═════
-        Runnable refreshCoworkers = () -> {
-            String d = etDate.getText() != null ? etDate.getText().toString().trim() : "";
-            String s = etStart.getText() != null ? etStart.getText().toString().trim() : "";
-            String e = etEnd.getText() != null ? etEnd.getText().toString().trim() : "";
-            refreshCoworkersSection(d, s, e, layoutCoworkers, rvCoworkers, coworkerAdapter);
-        };
 
         // 1. Data — z auto-refresh współpracowników
         etDate.setFocusable(false);
@@ -627,7 +741,6 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 String endStr = String.format(java.util.Locale.getDefault(), "%02d:%02d", hourOfDay, minute);
                 etEnd.setText(endStr);
 
-                // ═════ Auto-detekcja zamka ═════
                 if (isClosingTime(endStr)) {
                     tilClosingCrew.setVisibility(View.VISIBLE);
                 } else {
@@ -648,7 +761,6 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             etCategory.setText(shift.getCategory() != null && !shift.getCategory().equals("UNKNOWN") ? shift.getCategory() : "");
             swReplacement.setChecked(shift.isReplacement());
 
-            // Pre-fill closing crew
             if (shift.isClosingShift()) {
                 tilClosingCrew.setVisibility(View.VISIBLE);
                 if (shift.getClosingCrew() != null) {
@@ -656,8 +768,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 }
             }
 
-            // ═════ Pre-fill: Stan alarmu z bazy (async) ═════
-            if (shift.getDate() != null && shift.getStartTime() != null) {
+            if (shift.getDate() != null && shift.getStartTime() != null && !shift.getStartTime().isEmpty()) {
                 Executors.newSingleThreadExecutor().execute(() -> {
                     GlobalShift alarmState = viewModel.getAlarmStateForShift(
                             shift.getDate(), shift.getStartTime());
@@ -673,11 +784,10 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 });
             }
 
-            // Auto-load współpracowników dla istniejącej zmiany
             refreshCoworkers.run();
         } else {
-            // Default to today
             etDate.setText(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+            refreshCoworkers.run();
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(requireContext())
@@ -693,15 +803,13 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
 
                     if (date.isEmpty()) return;
 
-                    // Fix formatowania godzin (z 0:00 na 00:00)
                     if (start.length() == 4 && start.charAt(1) == ':') start = "0" + start;
                     if (end.length() == 4 && end.charAt(1) == ':') end = "0" + end;
 
-                    // Auto-detekcja zamka
                     boolean closing = isClosingTime(end);
+                    String finalCat = cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase();
 
                     if (isEdit) {
-                        String finalCat = cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase();
                         shift.setDate(date);
                         shift.setStartTime(start);
                         shift.setEndTime(end);
@@ -709,26 +817,23 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                         shift.setReplacement(isRep);
                         shift.setManual(true);
                         shift.setClosingShift(closing);
-                        shift.setClosingCrew(closing && !crew.isEmpty() ? crew : null);
-                        // Aktualizuj opis żeby chip był widoczny
+                        shift.setClosingCrew(!crew.isEmpty() ? crew : (shift.getClosingCrew() != null ? shift.getClosingCrew() : ""));
                         String updatedDesc = start.isEmpty() ? finalCat : finalCat + " (" + start + "-" + end + ")";
                         shift.setDescription(updatedDesc);
                         viewModel.updateShift(shift);
                     } else {
-                        // Budujemy description tak samo jak parser Excela — chip będzie widoczny
-                        String finalCat = cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase();
                         String desc = start.isEmpty() ? finalCat : finalCat + " (" + start + "-" + end + ")";
                         Shift newShift = new Shift(date, start, end, desc, true, isRep, finalCat);
                         newShift.setManual(true);
                         newShift.setClosingShift(closing);
-                        newShift.setClosingCrew(closing && !crew.isEmpty() ? crew : null);
+                        newShift.setClosingCrew(!crew.isEmpty() ? crew : "");
                         viewModel.insertShift(newShift);
                     }
 
-                    // ═════ Zapis stanu alarmu ═════
-                    boolean alarmEnabled = swAlarm.isChecked();
-                    if (!start.isEmpty()) {
-                        int offsetMinutes = 60; // domyślnie
+                    // ═════ Zapis stanu alarmu (z anulowaniem starej daty/godziny przy edycji, WOLNE lub oddaniu zmiany) ═════
+                    boolean alarmEnabled = swAlarm.isChecked() && !isRep && !start.isEmpty();
+                    if (!start.isEmpty() || !originalStartTime.isEmpty()) {
+                        int offsetMinutes = 60;
                         String offsetText = etAlarmOffset.getText() != null
                                 ? etAlarmOffset.getText().toString().trim() : "";
                         if (!offsetText.isEmpty()) {
@@ -736,14 +841,18 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                                 offsetMinutes = Integer.parseInt(offsetText.replaceAll("[^0-9]", ""));
                             } catch (NumberFormatException ignored) { }
                         }
-                        viewModel.toggleAlarmForShift(date, start, end, cat.isEmpty() ? "UNKNOWN" : cat.toUpperCase(),
-                                alarmEnabled, offsetMinutes);
+                        viewModel.toggleAlarmForShift(date, start, end, finalCat,
+                                alarmEnabled, offsetMinutes, originalDate, originalStartTime);
                     }
                 })
                 .setNegativeButton("Anuluj", null);
 
         if (isEdit) {
             builder.setNeutralButton("Usuń", (dialog, which) -> {
+                if (!originalStartTime.isEmpty()) {
+                    viewModel.toggleAlarmForShift(originalDate, "", "", "UNKNOWN",
+                            false, 60, originalDate, originalStartTime);
+                }
                 viewModel.deleteShift(shift);
             });
         }

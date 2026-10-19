@@ -90,6 +90,17 @@ public abstract class AppDatabase extends RoomDatabase {
     };
 
     /**
+     * v4 → v5
+     * Domyka lukę migracyjną między v4 a v5.
+     */
+    static final Migration MIGRATION_4_5 = new Migration(4, 5) {
+        @Override
+        public void migrate(@androidx.annotation.NonNull SupportSQLiteDatabase database) {
+            // Brak zmian strukturalnych pomiędzy v4 a v5
+        }
+    };
+
+    /**
      * v5 → v6
      * Dodaje kolumnę `is_replacement` do shifts.
      * Każda kolumna wymaga osobnego ALTER TABLE w SQLite.
@@ -301,7 +312,7 @@ public abstract class AppDatabase extends RoomDatabase {
     public static final Migration MIGRATION_14_15 = new Migration(14, 15) {
         @Override
         public void migrate(SupportSQLiteDatabase database) {
-            // 1. Utwórz tabelę tymczasową z unikalnym indeksem
+            // 1. Utwórz tabelę tymczasową
             database.execSQL(
                 "CREATE TABLE IF NOT EXISTS `rate_history_new` (" +
                 "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
@@ -309,10 +320,11 @@ public abstract class AppDatabase extends RoomDatabase {
                 "`rate` REAL NOT NULL, " +
                 "`note` TEXT)"
             );
-            // 2. Przenieś dane — przy duplikatach active_from zachowaj tylko ostatnio wstawiony
+            // 2. Przenieś dane — przy duplikatach active_from zachowaj tylko ostatnio wstawiony (MAX(id))
             database.execSQL(
-                "INSERT OR REPLACE INTO rate_history_new (id, active_from, rate, note) " +
+                "INSERT INTO rate_history_new (id, active_from, rate, note) " +
                 "SELECT id, active_from, rate, note FROM rate_history " +
+                "WHERE id IN (SELECT MAX(id) FROM rate_history GROUP BY active_from) " +
                 "ORDER BY id ASC"
             );
             // 3. Usuń starą tabelę
@@ -342,6 +354,7 @@ public abstract class AppDatabase extends RoomDatabase {
                     )
                     .addMigrations(
                         MIGRATION_3_4,   // v3 → v4
+                        MIGRATION_4_5,   // v4 → v5
                         MIGRATION_5_6,   // v5 → v6
                         MIGRATION_6_7,   // v6 → v7
                         MIGRATION_7_8,   // v7 → v8 (słownik pracowników)

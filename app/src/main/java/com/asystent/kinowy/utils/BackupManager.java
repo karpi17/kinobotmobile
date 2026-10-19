@@ -27,14 +27,19 @@ import java.util.Set;
 public class BackupManager {
 
     private static final String TAG = "BackupManager";
+    private static final String PREFS_NAME = "asystent_kinowy_prefs";
     private final AppDatabase db;
     private final Gson gson;
+    private final Context context;
 
     public BackupManager(Context context) {
-        this(AppDatabase.getInstance(context));
+        this.context = context != null ? context.getApplicationContext() : null;
+        this.db = AppDatabase.getInstance(context);
+        this.gson = new GsonBuilder().setPrettyPrinting().create();
     }
 
     public BackupManager(AppDatabase database) {
+        this.context = null;
         this.db = database;
         this.gson = new GsonBuilder().setPrettyPrinting().create();
     }
@@ -49,7 +54,7 @@ public class BackupManager {
         Log.d(TAG, "Rozpoczynam zrzut bezpieczny danych z kinowej bazy (Backup)...");
 
         BackupData backup = new BackupData();
-        backup.setBackupSchemaVersion(1);
+        backup.setBackupSchemaVersion(2);
         backup.setAppVersionName(currentAppVersion != null ? currentAppVersion : "unknown");
         backup.setExportTimestamp(new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(new Date()));
 
@@ -59,6 +64,20 @@ public class BackupManager {
         backup.setMonthlyReports(db.monthlyReportDao().getAllReportsSync());
         backup.setLosses(db.lossDao().getAllLossesSync());
         backup.setTips(db.tipDao().getAllTipsSync());
+        backup.setRateHistories(db.rateHistoryDao().getAllRatesSync());
+        backup.setActiveEmployees(db.employeeDao().getAllActiveEmployeesSync());
+
+        if (context != null) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            java.util.Map<String, Object> settings = new java.util.HashMap<>();
+            settings.put("user_name", prefs.getString("user_name", ""));
+            settings.put("hourly_rate", prefs.getFloat("hourly_rate", 0f));
+            settings.put("monthly_hours_goal", prefs.getInt("monthly_hours_goal", 100));
+            settings.put("monthly_goal_pln", prefs.getFloat("monthly_goal_pln", 0f));
+            settings.put("notify_before_minutes", prefs.getInt("notify_before_minutes", 30));
+            settings.put("preferred_role", prefs.getString("preferred_role", ""));
+            backup.setUserSettings(settings);
+        }
 
         String jsonResult = gson.toJson(backup);
         Log.d(TAG, "Pomyślny koniec budowy kopii (.json)! Czas: " + (System.currentTimeMillis() - startTime) + " ms, Wyrobiony rozmiar znaków: " + jsonResult.length());
@@ -143,10 +162,10 @@ public class BackupManager {
             List<Loss> existingLosses = db.lossDao().getAllLossesSync();
             Set<String> lossKeys = new HashSet<>();
             for (Loss l : existingLosses) {
-                lossKeys.add(l.getDate() + "_" + l.getAmount());
+                lossKeys.add(l.getDate() + "_" + l.getAmount() + "_" + (l.getDescription() != null ? l.getDescription().trim() : ""));
             }
             for (Loss l : backup.getLosses()) {
-                String lKey = l.getDate() + "_" + l.getAmount();
+                String lKey = l.getDate() + "_" + l.getAmount() + "_" + (l.getDescription() != null ? l.getDescription().trim() : "");
                 if (!lossKeys.contains(lKey)) {
                     l.setId(0);
                     db.lossDao().insert(l);
@@ -160,10 +179,10 @@ public class BackupManager {
             List<Tip> existingTips = db.tipDao().getAllTipsSync();
             Set<String> tipKeys = new HashSet<>();
             for (Tip t : existingTips) {
-                tipKeys.add(t.getDate() + "_" + t.getAmount());
+                tipKeys.add(t.getDate() + "_" + t.getAmount() + "_" + (t.getDescription() != null ? t.getDescription().trim() : ""));
             }
             for (Tip t : backup.getTips()) {
-                String tKey = t.getDate() + "_" + t.getAmount();
+                String tKey = t.getDate() + "_" + t.getAmount() + "_" + (t.getDescription() != null ? t.getDescription().trim() : "");
                 if (!tipKeys.contains(tKey)) {
                     t.setId(0);
                     db.tipDao().insert(t);
@@ -173,7 +192,73 @@ public class BackupManager {
             }
             summary.setTipsAdded(addedTips);
 
+            // 5. Historia stawek godzinowych (rate_history)
+            for (com.asystent.kinowy.models.RateHistory rh : backup.getRateHistories()) {
+                if (rh != null && rh.getActiveFrom() != null) {
+                    if (db.rateHistoryDao().getByDate(rh.getActiveFrom()) == null) {
+                        rh.setId(0);
+                        db.rateHistoryDao().insert(rh);
+                    }
+                }
+            }
+
+            // 6. Słownik aktywnych pracowników (active_employees)
+            if (!backup.getActiveEmployees().isEmpty()) {
+                db.employeeDao().insertAll(backup.getActiveEmployees());
+            }
         });
+
+        // 7. Przywrócenie ustawień użytkownika (SharedPreferences)
+        if (context != null && !backup.getUserSettings().isEmpty()) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            android.content.SharedPreferences.Editor editor = prefs.edit();
+            java.util.Map<String, Object> settings = backup.getUserSettings();
+            if (settings.get("user_name") instanceof String) {
+                String un = ((String) settings.get("user_name")).trim();
+                if (!un.isEmpty()) editor.putString("user_name", un);
+            }
+            if (settings.get("hourly_rate") instanceof Number) {
+                float hr = ((Number) settings.get("hourly_rate")).floatValue();
+                if (hr > 0f) editor.putFloat("hourly_rate", hr);
+            }
+            if (settings.get("monthly_hours_goal") instanceof Number) {
+                int mg = ((Number) settings.get("monthly_hours_goal")).intValue();
+                if (mg > 0) editor.putInt("monthly_hours_goal", mg);
+            }
+            if (settings.get("monthly_goal_pln") instanceof Number) {
+                float gp = ((Number) settings.get("monthly_goal_pln")).floatValue();
+                if (gp > 0f) editor.putFloat("monthly_goal_pln", gp);
+            }
+            if (settings.get("notify_before_minutes") instanceof Number) {
+                int nb = ((Number) settings.get("notify_before_minutes")).intValue();
+                if (nb >= 0) editor.putInt("notify_before_minutes", nb);
+            }
+            if (settings.get("preferred_role") instanceof String) {
+                String pr = ((String) settings.get("preferred_role")).trim();
+                if (!pr.isEmpty()) editor.putString("preferred_role", pr);
+            }
+            editor.apply();
+        }
+
+        // 8. Odtwórz zaplanowane budziki i powiadomienia po przywróceniu kopii
+        if (context != null) {
+            try {
+                String userName = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        .getString("user_name", "");
+                List<GlobalShift> activeAlarms = (userName != null && !userName.trim().isEmpty())
+                        ? db.globalShiftDao().getShiftsWithAlarmsForUser(userName.trim())
+                        : db.globalShiftDao().getShiftsWithAlarms();
+                if (activeAlarms != null) {
+                    for (GlobalShift shift : activeAlarms) {
+                        com.asystent.kinowy.alarm.AlarmScheduler.scheduleOneOffAlarm(context, shift);
+                    }
+                }
+                List<Shift> allRestoredShifts = db.shiftDao().getAllShiftsSync();
+                if (allRestoredShifts != null && !allRestoredShifts.isEmpty()) {
+                    com.asystent.kinowy.notifications.NotificationScheduler.scheduleAlarms(context, allRestoredShifts);
+                }
+            } catch (Exception ignored) {}
+        }
 
         summary.setSuccess(true);
         Log.d(TAG, "Reanimacja w całości wyliczona i osadzona pomyślnie z tarczą! Podsumowanie importowe: " + summary.toUserFriendlySummary());

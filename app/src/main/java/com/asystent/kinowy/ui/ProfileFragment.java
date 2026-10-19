@@ -222,6 +222,30 @@ public class ProfileFragment extends Fragment {
                                 .show();
 
                         if (summary.isSuccess()) {
+                            // Odśwież pola UI z przywróconych SharedPreferences i zsynchronizuj ViewModel
+                            SharedPreferences prefs = requireContext().getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                            String savedName = prefs.getString(PREF_USER_NAME, "");
+                            if (!TextUtils.isEmpty(savedName)) {
+                                etName.setText(savedName);
+                                viewModel.setTargetUserName(savedName);
+                            }
+                            float savedRate = prefs.getFloat(PREF_HOURLY_RATE, 0f);
+                            if (savedRate > 0f) {
+                                etHourlyRate.setText(String.valueOf(savedRate));
+                                showSavedRateLabel(savedRate);
+                                viewModel.setHourlyRate(savedRate);
+                            }
+                            int savedGoal = prefs.getInt(PREF_MONTHLY_GOAL, 100);
+                            etGoalHours.setText(String.valueOf(savedGoal));
+                            viewModel.getMonthlyHoursGoal().setValue(savedGoal);
+                            float savedGoalPLN = prefs.getFloat(PREF_GOAL_PLN, 0f);
+                            if (savedGoalPLN > 0f) {
+                                etGoalPLN.setText(String.valueOf(savedGoalPLN));
+                            }
+                            viewModel.setMonthlyGoalPLN(savedGoalPLN);
+                            int savedNotify = prefs.getInt(PREF_NOTIFY_BEFORE, 30);
+                            etNotifyMinutes.setText(String.valueOf(savedNotify));
+
                             // Natychmiastowe obudzenie i przestylizowanie żyjących widgetów z ekranu powtarzalnego
                             ShiftWidgetProvider.triggerUpdate(requireContext());
                             ShiftStackWidgetProvider.triggerUpdate(requireContext());
@@ -424,6 +448,14 @@ public class ProfileFragment extends Fragment {
             int minutes = Integer.parseInt(s);
             if (minutes < 0) throw new NumberFormatException();
             prefs.edit().putInt(PREF_NOTIFY_BEFORE, minutes).apply();
+            final android.content.Context appCtx = requireContext().getApplicationContext();
+            Executors.newSingleThreadExecutor().execute(() -> {
+                java.util.List<com.asystent.kinowy.models.Shift> shifts =
+                        com.asystent.kinowy.db.AppDatabase.getInstance(appCtx).shiftDao().getAllShiftsSync();
+                if (shifts != null) {
+                    com.asystent.kinowy.notifications.NotificationScheduler.scheduleAlarms(appCtx, shifts);
+                }
+            });
             Toast.makeText(requireContext(),
                     "✅ Budzik: " + minutes + " min przed zmianą", Toast.LENGTH_SHORT).show();
         } catch (NumberFormatException e) {

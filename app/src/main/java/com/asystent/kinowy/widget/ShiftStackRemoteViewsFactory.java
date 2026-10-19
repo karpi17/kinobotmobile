@@ -77,9 +77,11 @@ class ShiftStackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFact
             int count = 0;
             for (Shift s : all) {
                 if (count >= MAX_SHIFTS) break;
-                // Pomijamy zmiany oddane i przeszłe
+                // Pomijamy zmiany oddane, dni wolne (WOLNE) i przeszłe
                 if (s.isReplacement()) continue;
                 if (s.getDate() == null) continue;
+                if (s.getStartTime() == null || s.getStartTime().trim().isEmpty()) continue;
+                if ("WOLNE".equalsIgnoreCase(s.getCategory())) continue;
                 try {
                     if (!LocalDate.parse(s.getDate()).isBefore(today)) {
                         items.add(s);
@@ -122,7 +124,12 @@ class ShiftStackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFact
         // Alarm icon
         boolean hasAlarm = false;
         try {
-            GlobalShift gs = globalShiftDao.getShiftByDateAndStart(shift.getDate(), shift.getStartTime());
+            GlobalShift gs = (userName != null && !userName.trim().isEmpty())
+                    ? globalShiftDao.getShiftByDateStartAndUser(shift.getDate(), shift.getStartTime(), userName.trim())
+                    : globalShiftDao.getShiftByDateAndStart(shift.getDate(), shift.getStartTime());
+            if (gs == null && userName != null && !userName.trim().isEmpty()) {
+                gs = globalShiftDao.getShiftByDateStartAndUser(shift.getDate(), shift.getStartTime(), "Użytkownik");
+            }
             hasAlarm = gs != null && gs.isHasAlarm();
         } catch (Exception ignored) {}
         rv.setViewVisibility(R.id.widget_stack_alarm, hasAlarm ? View.VISIBLE : View.GONE);

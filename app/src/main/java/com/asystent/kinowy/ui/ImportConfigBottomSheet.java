@@ -52,14 +52,27 @@ public class ImportConfigBottomSheet extends BottomSheetDialogFragment {
         void onParseReady(Uri uri, int year, @Nullable String role, int clearMode);
     }
 
+    private static final String ARG_FILE_URI = "arg_file_uri";
+    private static final String ARG_FILE_NAME = "arg_file_name";
+
     private Uri fileUri;
     private String fileName;
     private OnParseReadyListener listener;
+
+    public ImportConfigBottomSheet() {
+        // Wymagany konstruktor bezargumentowy dla odtwarzania Fragmentu
+    }
 
     public static ImportConfigBottomSheet newInstance(Uri fileUri, String fileName) {
         ImportConfigBottomSheet sheet = new ImportConfigBottomSheet();
         sheet.fileUri = fileUri;
         sheet.fileName = fileName;
+        Bundle args = new Bundle();
+        if (fileUri != null) {
+            args.putString(ARG_FILE_URI, fileUri.toString());
+        }
+        args.putString(ARG_FILE_NAME, fileName);
+        sheet.setArguments(args);
         return sheet;
     }
 
@@ -78,6 +91,19 @@ public class ImportConfigBottomSheet extends BottomSheetDialogFragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        Bundle args = getArguments();
+        if (args != null) {
+            if (fileUri == null) {
+                String uriStr = args.getString(ARG_FILE_URI);
+                if (uriStr != null && !uriStr.isEmpty()) {
+                    fileUri = Uri.parse(uriStr);
+                }
+            }
+            if (fileName == null) {
+                fileName = args.getString(ARG_FILE_NAME);
+            }
+        }
 
         SharedPreferences prefs = requireContext()
                 .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);

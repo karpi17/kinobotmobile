@@ -36,7 +36,9 @@ public class GmailApiClient {
     private GmailApiClient() {
         // --- Logging interceptor ---
         HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
-        loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        loggingInterceptor.setLevel(com.asystent.kinowy.BuildConfig.DEBUG
+                ? HttpLoggingInterceptor.Level.BODY
+                : HttpLoggingInterceptor.Level.NONE);
 
         // --- Auth interceptor ---
         Interceptor authInterceptor = new Interceptor() {

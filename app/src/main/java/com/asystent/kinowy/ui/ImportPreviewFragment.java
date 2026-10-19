@@ -85,11 +85,7 @@ public class ImportPreviewFragment extends Fragment {
 
         btnCancelImport.setOnClickListener(v -> {
             viewModel.clearPendingImport();
-            if (getParentFragmentManager().getBackStackEntryCount() > 0) {
-                getParentFragmentManager().popBackStack();
-            } else {
-                getParentFragmentManager().beginTransaction().remove(ImportPreviewFragment.this).commit();
-            }
+            closePreview();
         });
 
         android.widget.CheckBox cbClearExisting = view.findViewById(R.id.cbClearExisting);
@@ -111,13 +107,23 @@ public class ImportPreviewFragment extends Fragment {
                     String modeLabel = clearExisting ? "Zaktualizowano grafik!" : "Połączono z istniejącym grafikiem!";
                     Toast.makeText(requireContext(), modeLabel, Toast.LENGTH_SHORT).show();
                 }
-                if (getParentFragmentManager().getBackStackEntryCount() > 0) {
-                    getParentFragmentManager().popBackStack();
-                } else {
-                    getParentFragmentManager().beginTransaction().remove(ImportPreviewFragment.this).commit();
-                }
+                closePreview();
             }
         });
+    }
+
+    private void closePreview() {
+        if (getParentFragmentManager().getBackStackEntryCount() > 0) {
+            getParentFragmentManager().popBackStack();
+        } else {
+            androidx.fragment.app.FragmentTransaction ft = getParentFragmentManager().beginTransaction()
+                    .remove(ImportPreviewFragment.this);
+            Fragment dash = getParentFragmentManager().findFragmentByTag("dashboard");
+            if (dash != null) {
+                ft.show(dash);
+            }
+            ft.commit();
+        }
     }
 
     private void bindParseResult(@Nullable ScheduleParseResult result) {
@@ -188,9 +194,29 @@ public class ImportPreviewFragment extends Fragment {
     private void showEditShiftDialog(Shift shift) {
         View dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_shift, null);
 
+        android.widget.EditText etDate = dialogView.findViewById(R.id.et_shift_date);
         android.widget.EditText etStart = dialogView.findViewById(R.id.et_shift_start);
         android.widget.EditText etEnd = dialogView.findViewById(R.id.et_shift_end);
+        android.widget.EditText etCategory = dialogView.findViewById(R.id.et_shift_category);
 
+        // Ukryj sekcje wymagające zapisanej w bazie zmiany
+        View coworkersSection = dialogView.findViewById(R.id.layout_coworkers_section);
+        if (coworkersSection != null) coworkersSection.setVisibility(View.GONE);
+        View btnFindReplacement = dialogView.findViewById(R.id.btn_find_replacement);
+        if (btnFindReplacement != null) btnFindReplacement.setVisibility(View.GONE);
+        View swAlarm = dialogView.findViewById(R.id.switch_alarm);
+        if (swAlarm != null) swAlarm.setVisibility(View.GONE);
+        View tilAlarmOffset = dialogView.findViewById(R.id.til_alarm_offset);
+        if (tilAlarmOffset != null) tilAlarmOffset.setVisibility(View.GONE);
+        View swReplacement = dialogView.findViewById(R.id.switch_replacement);
+        if (swReplacement != null) swReplacement.setVisibility(View.GONE);
+
+        if (etDate != null) {
+            etDate.setText(shift.getDate());
+        }
+        if (etCategory != null) {
+            etCategory.setText(shift.getCategory() != null ? shift.getCategory() : "");
+        }
         if (etStart != null && etEnd != null) {
             etStart.setText(shift.getStartTime());
             etEnd.setText(shift.getEndTime());
@@ -216,9 +242,15 @@ public class ImportPreviewFragment extends Fragment {
                 .setTitle("Edytuj godziny zmiany")
                 .setView(dialogView)
                 .setPositiveButton("Zapisz", (dialog, which) -> {
+                    if (etDate != null && etDate.getText() != null && !etDate.getText().toString().trim().isEmpty()) {
+                        shift.setDate(etDate.getText().toString().trim());
+                    }
+                    if (etCategory != null && etCategory.getText() != null && !etCategory.getText().toString().trim().isEmpty()) {
+                        shift.setCategory(etCategory.getText().toString().trim().toUpperCase());
+                    }
                     if (etStart != null && etEnd != null) {
-                        shift.setStartTime(etStart.getText().toString());
-                        shift.setEndTime(etEnd.getText().toString());
+                        shift.setStartTime(etStart.getText().toString().trim());
+                        shift.setEndTime(etEnd.getText().toString().trim());
                         shiftAdapter.notifyDataSetChanged();
                     }
                 })

@@ -26,31 +26,37 @@ public class StatisticsCalculator {
 
     public static YearlyStats calculate(String selectedYear, List<Shift> shifts, List<GlobalShift> globalShifts,
                                         List<Loss> losses, List<Tip> tips, List<RateHistory> rateHistories) {
-        
+        return calculate(selectedYear, shifts, globalShifts, losses, tips, rateHistories, "");
+    }
+
+    public static YearlyStats calculate(String selectedYear, List<Shift> shifts, List<GlobalShift> globalShifts,
+                                        List<Loss> losses, List<Tip> tips, List<RateHistory> rateHistories,
+                                        String userName) {
+
         List<Shift> yearShifts = new ArrayList<>();
         List<Loss> yearLosses = new ArrayList<>();
         List<Tip> yearTips = new ArrayList<>();
-        
+
         // Filtrowanie po roku
         boolean isAllTime = selectedYear == null || selectedYear.isEmpty() || selectedYear.equalsIgnoreCase("all-time");
-        
+
         if (shifts != null) {
             for (Shift s : shifts) {
-                if (s.getDate() != null && (isAllTime || s.getDate().startsWith(selectedYear))) {
+                if (s != null && s.getDate() != null && (isAllTime || s.getDate().startsWith(selectedYear))) {
                     yearShifts.add(s);
                 }
             }
         }
         if (losses != null) {
             for (Loss l : losses) {
-                if (l.getDate() != null && (isAllTime || l.getDate().startsWith(selectedYear))) {
+                if (l != null && l.getDate() != null && (isAllTime || l.getDate().startsWith(selectedYear))) {
                     yearLosses.add(l);
                 }
             }
         }
         if (tips != null) {
             for (Tip t : tips) {
-                if (t.getDate() != null && (isAllTime || t.getDate().startsWith(selectedYear))) {
+                if (t != null && t.getDate() != null && (isAllTime || t.getDate().startsWith(selectedYear))) {
                     yearTips.add(t);
                 }
             }
@@ -59,16 +65,23 @@ public class StatisticsCalculator {
         // Sortowanie historii stawek (od najnowszej do najstarszej) dla szybkiego dostępu
         List<RateHistory> ratesSortedDesc = new ArrayList<>();
         if (rateHistories != null) {
-            ratesSortedDesc.addAll(rateHistories);
+            for (RateHistory rh : rateHistories) {
+                if (rh != null && rh.getActiveFrom() != null) {
+                    ratesSortedDesc.add(rh);
+                }
+            }
             ratesSortedDesc.sort((a, b) -> b.getActiveFrom().compareTo(a.getActiveFrom()));
         }
 
-        // Grupowanie globalnych zmian w strukturę szybkiego wyszukiwania
-        // Map<Date, Map<Category, EarliestStartTime>>
+        // Grupowanie globalnych zmian w strukturę szybkiego wyszukiwania (z pominięciem usuniętych)
+        // Map<Date, Map<Category, EarliestStartTime>> oraz Map<Date, List<GlobalShift>>
         Map<String, Map<String, LocalTime>> earliestGlobalShifts = new HashMap<>();
+        Map<String, List<GlobalShift>> globalShiftsByDate = new HashMap<>();
         if (globalShifts != null) {
             for (GlobalShift gs : globalShifts) {
+                if (gs == null || gs.isDeleted()) continue;
                 if (gs.getDate() != null && gs.getStartTime() != null) {
+                    globalShiftsByDate.computeIfAbsent(gs.getDate(), k -> new ArrayList<>()).add(gs);
                     try {
                         LocalTime st = LocalTime.parse(gs.getStartTime(), TIME_FORMAT);
                         earliestGlobalShifts.putIfAbsent(gs.getDate(), new HashMap<>());
@@ -85,30 +98,32 @@ public class StatisticsCalculator {
         double totalHours = 0;
         int closingShifts = 0;
         int openingShifts = 0;
-        
+
         Map<String, Integer> categoryCounts = new HashMap<>();
-        
+
         // Kasa wg miesiąca: Map<yyyy-MM, Double>
         Map<String, Double> monthlyNetPay = new HashMap<>();
-        
-        // Współpracownicy z GlobalShift (tylko na te daty co user pracował)
+
+        // Współpracownicy z GlobalShift (pokrywający się godzinowo w dni pracy użytkownika)
         Map<String, Integer> coworkerCounts = new HashMap<>();
-        
-        // Do obliczania maratonów (sortowanie wg daty)
+
+        // Sortowanie wg daty
         List<Shift> sortedShifts = new ArrayList<>(yearShifts);
-        sortedShifts.sort(Comparator.comparing(Shift::getDate));
+        sortedShifts.sort(Comparator.comparing(Shift::getDate, Comparator.nullsLast(String::compareTo)));
 
         for (Shift s : sortedShifts) {
             if (s.isReplacement()) continue;
-            
-            // 1. Zliczanie godzin
+            if ("WOLNE".equalsIgnoreCase(s.getCategory()) || "WOLNE".equalsIgnoreCase(s.getDescription())) continue;
+
+            // 1. Zliczanie godzin — pomijamy dni wolne (h <= 0)
             double h = calculateHours(s.getStartTime(), s.getEndTime());
+            if (h <= 0) continue;
             totalHours += h;
-            
-            // 2. Kategoria
-            String cat = s.getCategory() != null ? s.getCategory() : "UNKNOWN";
+
+            // 2. Kategoria (tylko dla realnie przepracowanych zmian h > 0)
+            String cat = s.getCategory() != null && !s.getCategory().trim().isEmpty() ? s.getCategory() : "UNKNOWN";
             categoryCounts.put(cat, categoryCounts.getOrDefault(cat, 0) + 1);
-            
+
             // 3. Zamki i Openy
             if (s.isClosingShift()) {
                 closingShifts++;
@@ -117,12 +132,11 @@ public class StatisticsCalculator {
                 try {
                     LocalTime myStart = LocalTime.parse(s.getStartTime(), TIME_FORMAT);
                     boolean isOpen = true; // domyślnie true jeśli nie ma danych globalnych
-                    
+
                     if (earliestGlobalShifts.containsKey(s.getDate())) {
                         Map<String, LocalTime> catMap = earliestGlobalShifts.get(s.getDate());
                         if (catMap.containsKey(cat)) {
                             LocalTime earliestForCat = catMap.get(cat);
-                            // Jeśli moja zmiana startuje później niż najwcześniejsza z tego działu - nie jestem openem.
                             if (myStart.isAfter(earliestForCat)) {
                                 isOpen = false;
                             }
@@ -133,7 +147,7 @@ public class StatisticsCalculator {
                     }
                 } catch (Exception ignored) {}
             }
-            
+
             // 4. Finanse: Miesięczne zarobki
             String month = s.getDate().length() >= 7 ? s.getDate().substring(0, 7) : "";
             if (!month.isEmpty()) {
@@ -141,26 +155,29 @@ public class StatisticsCalculator {
                 double gross = h * rate;
                 monthlyNetPay.put(month, monthlyNetPay.getOrDefault(month, 0.0) + gross);
             }
-            
-            // 5. Współpracownicy
-            if (globalShifts != null) {
-                for (GlobalShift gs : globalShifts) {
-                    if (gs.getDate().equals(s.getDate()) && !gs.isDeleted() && !gs.getName().equalsIgnoreCase("Ty") /* w zaleznosci od nazwy targetUser */) {
-                        // TODO: Filtracja imienia samego uzytkownika bedzie wymagala dostepu do name
-                        coworkerCounts.put(gs.getName(), coworkerCounts.getOrDefault(gs.getName(), 0) + 1);
-                    }
+
+            // 5. Współpracownicy (pokrywający się czasowo, bez usuniętych i bez samego użytkownika)
+            List<GlobalShift> dailyGlobal = globalShiftsByDate.get(s.getDate());
+            if (dailyGlobal != null && !dailyGlobal.isEmpty()) {
+                List<GlobalShift> overlapping = ShiftUtils.getOverlappingShifts(
+                        s.getStartTime(), s.getEndTime(), dailyGlobal);
+                for (GlobalShift gs : overlapping) {
+                    if (gs == null || gs.isDeleted() || gs.getName() == null) continue;
+                    String coworkerName = gs.getName().trim();
+                    if (coworkerName.isEmpty() || isSameUser(coworkerName, userName)) continue;
+                    coworkerCounts.put(coworkerName, coworkerCounts.getOrDefault(coworkerName, 0) + 1);
                 }
             }
         }
-        
-        // Odejmujemy straty od miesięcznych zarobków
+
+        // Odejmujemy straty od miesięcznych zarobków (z ograniczeniem od dołu do 0)
         for (Loss l : yearLosses) {
             String month = l.getDate().length() >= 7 ? l.getDate().substring(0, 7) : "";
             if (monthlyNetPay.containsKey(month)) {
-                monthlyNetPay.put(month, monthlyNetPay.get(month) - l.getAmount());
+                monthlyNetPay.put(month, Math.max(0.0, monthlyNetPay.get(month) - l.getAmount()));
             }
         }
-        
+
         // Dodajemy napiwki do miesięcznych zarobków
         for (Tip t : yearTips) {
             String month = t.getDate().length() >= 7 ? t.getDate().substring(0, 7) : "";
@@ -168,13 +185,15 @@ public class StatisticsCalculator {
                 monthlyNetPay.put(month, monthlyNetPay.get(month) + t.getAmount());
             }
         }
-        
-        // Zliczanie najdłuższego maratonu
+
+        // Zliczanie najdłuższego maratonu (tylko realnie przepracowane dni h > 0)
         int longestMarathon = 0;
         int currentMarathon = 0;
         LocalDate lastDate = null;
         for (Shift s : sortedShifts) {
             if (s.isReplacement()) continue;
+            if ("WOLNE".equalsIgnoreCase(s.getCategory()) || "WOLNE".equalsIgnoreCase(s.getDescription())) continue;
+            if (calculateHours(s.getStartTime(), s.getEndTime()) <= 0) continue;
             try {
                 LocalDate date = LocalDate.parse(s.getDate());
                 if (lastDate == null) {
@@ -193,7 +212,7 @@ public class StatisticsCalculator {
                 lastDate = date;
             } catch (Exception ignored) {}
         }
-        
+
         // Top Współpracownik
         String topCoworker = "Brak danych";
         int topCoworkerCount = 0;
@@ -206,7 +225,7 @@ public class StatisticsCalculator {
         if (topCoworkerCount > 0) {
             topCoworker = topCoworker + " (" + topCoworkerCount + " z. wspólnych)";
         }
-        
+
         // Najczęstsza kategoria
         String topCategory = "Brak danych";
         int topCatCount = 0;
@@ -222,7 +241,7 @@ public class StatisticsCalculator {
         double bestMonthAmount = 0.0;
         String worstMonth = "Brak";
         double worstMonthAmount = Double.MAX_VALUE;
-        
+
         for (Map.Entry<String, Double> entry : monthlyNetPay.entrySet()) {
             if (entry.getValue() > bestMonthAmount) {
                 bestMonthAmount = entry.getValue();
@@ -248,6 +267,15 @@ public class StatisticsCalculator {
             worstMonth,
             worstMonthAmount
         );
+    }
+
+    private static boolean isSameUser(String gsName, String userName) {
+        if (gsName == null) return false;
+        String g = gsName.trim().toLowerCase(Locale.ROOT);
+        if (g.equals("ty") || g.equals("użytkownik")) return true;
+        if (userName == null || userName.trim().isEmpty()) return false;
+        String u = userName.trim().toLowerCase(Locale.ROOT);
+        return g.equals(u) || g.startsWith(u + " ") || g.startsWith(u + "(") || u.startsWith(g + " ");
     }
     
     private static float getRateForDate(String date, List<RateHistory> ratesSortedDesc) {

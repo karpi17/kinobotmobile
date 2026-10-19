@@ -160,18 +160,19 @@ public class NewFormatExcelParser implements ScheduleParser {
 
         // 3. Iteracja po wierszach danych (dni miesiąca)
         Map<String, List<String>> dailyCrewMap = new HashMap<>(); // date -> list of names working
+        int maxDayInMonth = java.time.YearMonth.of(currentYear, monthValue).lengthOfMonth();
 
         for (int r = 2; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
             if (row == null) continue;
 
             int dayNum = parseDayNumber(row.getCell(0));
-            if (dayNum < 1 || dayNum > 31) {
+            if (dayNum < 1 || dayNum > maxDayInMonth) {
                 // Może być w kolumnie 1 jeśli kolumna 0 to np. pusta
                 dayNum = parseDayNumber(row.getCell(1));
             }
-            if (dayNum < 1 || dayNum > 31) {
-                continue; // Pomijamy wiersze sumaryczne i puste
+            if (dayNum < 1 || dayNum > maxDayInMonth) {
+                continue; // Pomijamy wiersze sumaryczne, puste i nieprawidłowe dni miesiąca
             }
 
             String dateStr = String.format(Locale.US, "%04d-%02d-%02d", currentYear, monthValue, dayNum);
@@ -198,10 +199,25 @@ public class NewFormatExcelParser implements ScheduleParser {
                     gs.setManuallyEdited(false);
                     allGlobalShifts.add(gs);
 
-                    // Jeśli to nie sam użytkownik i też zamyka, dodajemy imię do ekipy zamykającej
-                    if (!emp.name.equalsIgnoreCase(targetUserCol.name) && info.isClosingShift) {
+                    // Wszyscy koledzy pracujący w danym dniu (poza samym użytkownikiem)
+                    if (!emp.name.equalsIgnoreCase(targetUserCol.name)) {
                         if (!coworkersForDay.contains(emp.name)) {
                             coworkersForDay.add(emp.name);
+                        }
+                        Shift empShift = new Shift(
+                                dateStr,
+                                info.startTime,
+                                info.endTime,
+                                info.description != null ? info.description : "",
+                                true,
+                                false,
+                                info.category
+                        );
+                        empShift.setClosingShift(info.isClosingShift);
+                        empShift.setClosingCrew("");
+                        List<Shift> empList = scheduleByName.get(emp.name);
+                        if (empList != null) {
+                            empList.add(empShift);
                         }
                     }
                 }
@@ -216,10 +232,10 @@ public class NewFormatExcelParser implements ScheduleParser {
             if (row == null) continue;
 
             int dayNum = parseDayNumber(row.getCell(0));
-            if (dayNum < 1 || dayNum > 31) {
+            if (dayNum < 1 || dayNum > maxDayInMonth) {
                 dayNum = parseDayNumber(row.getCell(1));
             }
-            if (dayNum < 1 || dayNum > 31) continue;
+            if (dayNum < 1 || dayNum > maxDayInMonth) continue;
 
             String dateStr = String.format(Locale.US, "%04d-%02d-%02d", currentYear, monthValue, dayNum);
             Cell userCell = row.getCell(targetUserCol.colIndex);
@@ -238,11 +254,11 @@ public class NewFormatExcelParser implements ScheduleParser {
                 );
                 userShift.setClosingShift(info.isClosingShift);
 
-                if (info.isClosingShift) {
-                    List<String> coworkers = dailyCrewMap.get(dateStr);
-                    if (coworkers != null && !coworkers.isEmpty()) {
-                        userShift.setClosingCrew(String.join(", ", coworkers));
-                    }
+                List<String> coworkers = dailyCrewMap.get(dateStr);
+                if (coworkers != null && !coworkers.isEmpty()) {
+                    userShift.setClosingCrew(String.join(", ", coworkers));
+                } else {
+                    userShift.setClosingCrew("");
                 }
 
                 targetUserShifts.add(userShift);
@@ -258,6 +274,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                         false,
                         "UNKNOWN"
                 );
+                userShift.setClosingCrew("");
                 targetUserShifts.add(userShift);
                 scheduleByName.get(targetUserCol.name).add(userShift);
             }

@@ -198,39 +198,62 @@ public class MainViewModel extends AndroidViewModel {
     }
 
     public void calculateStatistics(String year) {
-        // Robimy snapshot list z LiveData na main threadzie
-        List<Shift> shiftsSnapshot = allShifts.getValue();
-        List<Loss> lossesSnapshot = allLosses.getValue();
-        List<Tip> tipsSnapshot = allTips.getValue();
-        List<com.asystent.kinowy.models.RateHistory> ratesSnapshot = allRates.getValue();
-
         executor.execute(() -> {
+            com.asystent.kinowy.db.AppDatabase db = com.asystent.kinowy.db.AppDatabase.getInstance(getApplication());
+            List<Shift> shiftsSnapshot = db.shiftDao().getAllShiftsSync();
             List<GlobalShift> gsSnapshot = globalShiftDao.getAllGlobalShiftsSync();
+            List<Loss> lossesSnapshot = db.lossDao().getAllLossesSync();
+            List<Tip> tipsSnapshot = db.tipDao().getAllTipsSync();
+            List<com.asystent.kinowy.models.RateHistory> ratesSnapshot = rateHistoryDao.getAllRatesSync();
+            android.content.SharedPreferences prefs = getApplication()
+                    .getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE);
+            String currentUserName = prefs.getString("user_name", targetUserName != null ? targetUserName : "");
             com.asystent.kinowy.models.YearlyStats stats = com.asystent.kinowy.utils.StatisticsCalculator.calculate(
-                    year, shiftsSnapshot, gsSnapshot, lossesSnapshot, tipsSnapshot, ratesSnapshot
+                    year, shiftsSnapshot, gsSnapshot, lossesSnapshot, tipsSnapshot, ratesSnapshot, currentUserName
             );
             yearlyStats.postValue(stats);
         });
     }
 
     private void setupBhpAlerts() {
-        bhpAlerts.addSource(allShifts, shifts -> {
-            if (shifts != null) {
-                // Odfiltrujemy zmiany np. z przyszłości lub tylko z bierzącego miesiąca
-                // W Strażniku BHP analizujemy wszystko jak leci z perspektywy przyszłych/bieżących
-                // Optymalizacja: analizujemy tylko zmiany po dacie 1szego z bieżącego mca, aby nie alarmować o starych
-                String monthPrefix = getCurrentMonthPrefix();
-                List<Shift> filtered = new ArrayList<>();
-                for (Shift s : shifts) {
-                    if (s.getDate() != null && s.getDate().compareTo(monthPrefix + "-01") >= 0) {
-                        filtered.add(s);
-                    }
-                }
-                
-                List<com.asystent.kinowy.models.BhpAlert> alerts = com.asystent.kinowy.utils.BhpGuard.checkSchedule(filtered);
-                bhpAlerts.setValue(alerts);
+        bhpAlerts.addSource(allShifts, shifts -> recalculateBhpAlerts());
+        bhpAlerts.addSource(currentSelectedMonth, month -> recalculateBhpAlerts());
+    }
+
+    private void recalculateBhpAlerts() {
+        List<Shift> shifts = allShifts.getValue();
+        if (shifts == null) {
+            bhpAlerts.setValue(new ArrayList<>());
+            return;
+        }
+        YearMonth selected = currentSelectedMonth.getValue();
+        if (selected == null) selected = YearMonth.now();
+
+        String monthStart = selected.atDay(1).toString();
+        String monthEnd = selected.atEndOfMonth().toString();
+        // Pobieramy zmiany z zapasem 7 dni wstecz przed analizowanym miesiącem (przełom miesiąca dla Clopen/Maraton/Overtime)
+        String lookbackDate = selected.atDay(1).minusDays(7).toString();
+
+        List<Shift> filtered = new ArrayList<>();
+        for (Shift s : shifts) {
+            if (s.getDate() != null
+                    && s.getDate().compareTo(lookbackDate) >= 0
+                    && s.getDate().compareTo(monthEnd) <= 0) {
+                filtered.add(s);
             }
-        });
+        }
+
+        List<com.asystent.kinowy.models.BhpAlert> rawAlerts = com.asystent.kinowy.utils.BhpGuard.checkSchedule(filtered);
+        List<com.asystent.kinowy.models.BhpAlert> relevantAlerts = new ArrayList<>();
+        for (com.asystent.kinowy.models.BhpAlert alert : rawAlerts) {
+            String alertDate = alert.getDate();
+            if (alertDate != null && !alertDate.isEmpty()
+                    && alertDate.compareTo(monthStart) >= 0
+                    && alertDate.compareTo(monthEnd) <= 0) {
+                relevantAlerts.add(alert);
+            }
+        }
+        bhpAlerts.setValue(relevantAlerts);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -239,7 +262,7 @@ public class MainViewModel extends AndroidViewModel {
 
     /**
      * Obiekt podsumowania wypłaty za bieżący miesiąc.
-     * Faza 4: Rozszerzony o informacje o celu finansowym.
+     * Faza 4: Rozszerzony o informacje o celu finansowym oraz godzinach nocnych (22:00–06:00).
      */
     public static class RateBreakdown {
         public final float rate;
@@ -252,6 +275,7 @@ public class MainViewModel extends AndroidViewModel {
 
     public static class PayrollInfo {
         private final double totalHours;
+        private final double nightHours;   // łączna liczba godzin nocnych (22:00–06:00)
         private final float hourlyRate;    // ostatnia obowiązująca stawka (do symulacji)
         private final double totalLosses;
         private final double totalTips;
@@ -264,17 +288,24 @@ public class MainViewModel extends AndroidViewModel {
 
         public PayrollInfo(double totalHours, float hourlyRate, double totalLosses,
                            double totalTips, float goalPLN) {
-            this(totalHours, hourlyRate, (totalHours * hourlyRate), totalLosses, totalTips, goalPLN, new java.util.ArrayList<>());
+            this(totalHours, 0.0, hourlyRate, (totalHours * hourlyRate), totalLosses, totalTips, goalPLN, new java.util.ArrayList<>());
         }
 
         /** Konstruktor z wyliczoną sumą (Per-Shift, różne stawki). */
         public PayrollInfo(double totalHours, float latestRate, double earnedGross,
                            double totalLosses, double totalTips, float goalPLN, List<RateBreakdown> breakdown) {
+            this(totalHours, 0.0, latestRate, earnedGross, totalLosses, totalTips, goalPLN, breakdown);
+        }
+
+        /** Konstruktor z wyliczoną sumą (Per-Shift) oraz godzinami nocnymi (22:00–06:00). */
+        public PayrollInfo(double totalHours, double nightHours, float latestRate, double earnedGross,
+                           double totalLosses, double totalTips, float goalPLN, List<RateBreakdown> breakdown) {
             this.totalHours = totalHours;
+            this.nightHours = nightHours;
             this.hourlyRate = latestRate;
             this.totalLosses = totalLosses;
             this.totalTips = totalTips;
-            this.netPay = Math.max(0, earnedGross - totalLosses) + totalTips;
+            this.netPay = com.asystent.kinowy.utils.PayrollCalculator.calculateNetWithDeductions(earnedGross, totalLosses, totalTips);
             this.goalPLN = goalPLN;
             this.goalProgress = com.asystent.kinowy.utils.PayrollCalculator.calculateGoalProgress(netPay, goalPLN);
             this.missingPLN = com.asystent.kinowy.utils.PayrollCalculator.calculateMissingPLN(netPay, goalPLN);
@@ -283,6 +314,7 @@ public class MainViewModel extends AndroidViewModel {
         }
 
         public double getTotalHours() { return totalHours; }
+        public double getNightHours() { return nightHours; }
         public float getHourlyRate() { return hourlyRate; }
         public double getTotalLosses() { return totalLosses; }
         public double getTotalTips() { return totalTips; }
@@ -296,13 +328,14 @@ public class MainViewModel extends AndroidViewModel {
 
     /**
      * Konfiguruje MediatorLiveData, który reaguje na zmiany w:
-     * allShifts, allLosses, hourlyRateLive, monthlyGoalPLN oraz currentSelectedMonth
+     * allShifts, allLosses, allTips, allRates, hourlyRateLive, monthlyGoalPLN oraz currentSelectedMonth
      * — i przelicza wypłatę za bieżący miesiąc.
      */
     private void setupPayrollCalculation() {
         monthlyPayroll.addSource(allShifts, shifts -> recalculatePayroll());
         monthlyPayroll.addSource(allLosses, losses -> recalculatePayroll());
         monthlyPayroll.addSource(allTips, tips -> recalculatePayroll());
+        monthlyPayroll.addSource(allRates, rates -> recalculatePayroll());
         monthlyPayroll.addSource(hourlyRateLive, rate -> recalculatePayroll());
         monthlyPayroll.addSource(currentSelectedMonth, month -> recalculatePayroll());
         monthlyPayroll.addSource(monthlyGoalPLN, goal -> recalculatePayroll());
@@ -385,8 +418,11 @@ public class MainViewModel extends AndroidViewModel {
             java.time.LocalDateTime upcomingTime = null;
 
             for (Shift shift : shifts) {
+                if (shift.isReplacement()) continue;
+                if ("WOLNE".equalsIgnoreCase(shift.getCategory()) || "WOLNE".equalsIgnoreCase(shift.getDescription())) continue;
                 if (shift.getDate() == null || shift.getStartTime() == null
                         || shift.getEndTime() == null) continue;
+                if (shift.getStartTime().trim().isEmpty() || shift.getEndTime().trim().isEmpty()) continue;
                 try {
                     java.time.LocalDate date = java.time.LocalDate.parse(shift.getDate());
                     LocalTime startLt = LocalTime.parse(shift.getStartTime());
@@ -448,27 +484,31 @@ public class MainViewModel extends AndroidViewModel {
     /**
      * Przelicza wypłatę wg logiki Per-Shift.
      * Każda zmiana jest mnożona przez stawkę obowiązującą w JEJ DNIU.
-     * Dzięki temu podwyżka w trakcie miesiąca jest poprawnie uwzględniana.
-     *
-     * UWAGA: DAO wymaga background thread — całe obliczenia wykonujemy
-     * na AppDatabase.databaseWriteExecutor i wracamy przez postValue().
+     * Dzięki temu podwyżka w trakcie miesiąca jest poprawnie uwzględniana,
+     * a latestRate wskazuje aktualną stawkę obowiązującą na koniec wybranego miesiąca (po podwyżce).
      */
     private void recalculatePayroll() {
-        // Odczytaj dane z LiveData na main thread ZANIM wejdziemy w background
-        // (LiveData.getValue() jest thread-safe tylko na main thread)
         final List<Shift> shifts  = allShifts.getValue();
         final List<Loss>  losses  = allLosses.getValue();
         final List<Tip>   tips    = allTips.getValue();
         final float goalPLN       = monthlyGoalPLN.getValue() != null ? monthlyGoalPLN.getValue() : 0f;
         final float fallbackRate  = hourlyRateLive.getValue() != null ? hourlyRateLive.getValue() : 0f;
-        final String monthPrefix  = getCurrentMonthPrefix();
+        final YearMonth selectedYm = currentSelectedMonth.getValue() != null ? currentSelectedMonth.getValue() : YearMonth.now();
+        final String monthPrefix  = String.format(Locale.US, "%04d-%02d", selectedYm.getYear(), selectedYm.getMonthValue());
+        final String endOfMonthDate = selectedYm.atEndOfMonth().toString();
 
         executor.execute(() -> {
             // ─── Per-Shift: każda zmiana × jej stawka ───────────────────────────
             double totalHours = 0;
+            double totalNightHours = 0;
             double earnedGross = 0;
-            float latestRate = fallbackRate;
             List<RateBreakdown> breakdown = new java.util.ArrayList<>();
+
+            float monthRate = rateHistoryDao.getRateForDate(endOfMonthDate);
+            if (monthRate <= 0) {
+                monthRate = rateHistoryDao.getLatestRate();
+            }
+            float latestRate = monthRate > 0 ? monthRate : fallbackRate;
 
             if (shifts != null) {
                 java.util.Map<Float, Double> hoursByRate = new java.util.HashMap<>();
@@ -477,24 +517,19 @@ public class MainViewModel extends AndroidViewModel {
                     double shiftHours = calculateShiftHours(shift);
                     if (shiftHours <= 0) continue;
                     totalHours += shiftHours;
+                    totalNightHours += com.asystent.kinowy.utils.PayrollCalculator.calculateNightHours(
+                            shift.getStartTime(), shift.getEndTime());
                     float rateForShift = rateHistoryDao.getRateForDate(shift.getDate());
-                    if (rateForShift <= 0) rateForShift = fallbackRate;
+                    if (rateForShift <= 0) rateForShift = latestRate;
                     earnedGross += shiftHours * rateForShift;
-                    
+
                     hoursByRate.put(rateForShift, hoursByRate.getOrDefault(rateForShift, 0.0) + shiftHours);
                 }
-                
+
                 for (java.util.Map.Entry<Float, Double> entry : hoursByRate.entrySet()) {
                     breakdown.add(new RateBreakdown(entry.getKey(), entry.getValue(), entry.getKey() * entry.getValue()));
                 }
                 breakdown.sort((a, b) -> Float.compare(b.rate, a.rate));
-                
-                if (totalHours > 0) {
-                    latestRate = (float) (earnedGross / totalHours);
-                } else {
-                    float monthRate = rateHistoryDao.getRateForDate(monthPrefix + "-28");
-                    latestRate = monthRate > 0 ? monthRate : fallbackRate;
-                }
             }
 
             // ─── Suma strat z bieżącego miesiąca ────────────────────────────────
@@ -519,7 +554,7 @@ public class MainViewModel extends AndroidViewModel {
 
             // postValue() — thread-safe, można wołać z tła
             monthlyPayroll.postValue(new PayrollInfo(
-                    totalHours, latestRate, earnedGross, totalLosses, totalTips, goalPLN, breakdown));
+                    totalHours, totalNightHours, latestRate, earnedGross, totalLosses, totalTips, goalPLN, breakdown));
         });
     }
 
@@ -784,6 +819,10 @@ public class MainViewModel extends AndroidViewModel {
         return globalShiftDao.getShiftsByDate(date);
     }
 
+    public List<GlobalShift> getAllGlobalShiftsSync() {
+        return globalShiftDao.getAllGlobalShiftsSync();
+    }
+
     /**
      * Aktualizuje zmianę globalną (ręczna edycja godzin współpracownika).
      * Ustawia flagę isManuallyEdited = true automatycznie.
@@ -793,8 +832,9 @@ public class MainViewModel extends AndroidViewModel {
         executor.execute(() -> {
             gs.setManuallyEdited(true);
             globalShiftDao.updateGlobalShift(gs);
-            // Odśwież widżet
+            // Odśwież widżety
             com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+            com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(getApplication());
         });
     }
 
@@ -809,6 +849,7 @@ public class MainViewModel extends AndroidViewModel {
             gs.setManuallyEdited(true);
             globalShiftDao.updateGlobalShift(gs);
             com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+            com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(getApplication());
         });
     }
 
@@ -827,6 +868,7 @@ public class MainViewModel extends AndroidViewModel {
             // Widget refresh tylko gdy faktycznie dodano (nie duplikat)
             if (rowId != -1L) {
                 com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+                com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(getApplication());
             }
 
             if (onComplete != null) {
@@ -857,66 +899,118 @@ public class MainViewModel extends AndroidViewModel {
         return targetUserName;
     }
 
+    private String resolveCurrentUserName() {
+        if (targetUserName != null && !targetUserName.trim().isEmpty()) {
+            return targetUserName.trim();
+        }
+        android.content.SharedPreferences prefs = getApplication().getSharedPreferences(
+                "asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE);
+        return prefs.getString("user_name", "");
+    }
+
     // ─── Alarm — toggle i odczyt stanu ─────────────────────────────────
 
-    /**
-     * Przełącza alarm dla zmiany identyfikowanej przez datę i godzinę startu.
-     * <p>
-     * Aktualizuje flagi {@code has_alarm} i {@code alarm_offset_minutes} w DAO,
-     * następnie ustawia lub anuluje alarm w {@link com.asystent.kinowy.alarm.AlarmScheduler}.
-     * <p>
-     * <b>Wywoływane na wątku w tle.</b>
-     *
-     * @param date         data zmiany (yyyy-MM-dd)
-     * @param startTime    godzina startu (HH:mm)
-     * @param endTime      godzina końca (HH:mm) — wymagana dla upsert
-     * @param category     kategoria zmiany (BAR/OW/UNKNOWN)
-     * @param hasAlarm     true = włącz alarm, false = wyłącz
-     * @param offsetMinutes wyprzedzenie w minutach (30, 60, 90, 120)
-     */
     public void toggleAlarmForShift(String date, String startTime,
                                     String endTime, String category,
                                     boolean hasAlarm, int offsetMinutes) {
-        executor.execute(() -> {
-            // 0. Pobierz STARY stan — potrzebny do anulowania starego alarmu przy edycji
-            GlobalShift oldGs = globalShiftDao.getShiftByDateAndStart(date, startTime);
+        toggleAlarmForShift(date, startTime, endTime, category, hasAlarm, offsetMinutes, startTime);
+    }
 
-            // 1. Aktualizuj flagi w bazie (zadziała tylko jeśli rekord istnieje)
-            globalShiftDao.updateAlarmState(date, startTime, hasAlarm, offsetMinutes);
+    /**
+     * Przełącza alarm dla zmiany identyfikowanej przez datę i godzinę startu,
+     * z obsługą anulowania starego alarmu przy zmianie godziny rozpoczęcia.
+     */
+    private GlobalShift findUserGlobalShift(String date, String startTime, String userName) {
+        if (date == null || startTime == null || startTime.trim().isEmpty()) return null;
+        if (userName != null && !userName.trim().isEmpty()) {
+            GlobalShift gs = globalShiftDao.getShiftByDateStartAndUser(date, startTime, userName.trim());
+            if (gs != null) return gs;
+            return globalShiftDao.getShiftByDateStartAndUser(date, startTime, "Użytkownik");
+        }
+        GlobalShift gs = globalShiftDao.getShiftByDateStartAndUser(date, startTime, "Użytkownik");
+        return gs != null ? gs : globalShiftDao.getShiftByDateAndStart(date, startTime);
+    }
+
+    public void toggleAlarmForShift(String date, String startTime,
+                                    String endTime, String category,
+                                    boolean hasAlarm, int offsetMinutes,
+                                    String oldStartTime) {
+        toggleAlarmForShift(date, startTime, endTime, category, hasAlarm, offsetMinutes, date, oldStartTime);
+    }
+
+    public void toggleAlarmForShift(String date, String startTime,
+                                    String endTime, String category,
+                                    boolean hasAlarm, int offsetMinutes,
+                                    String oldDate, String oldStartTime) {
+        executor.execute(() -> {
+            String userName = resolveCurrentUserName();
+            String effectiveDateForOld = (oldDate != null && !oldDate.trim().isEmpty()) ? oldDate : date;
+
+            // Jeśli data lub godzina startu uległa zmianie — anuluj i wyczyść alarm ze starej zmiany
+            if (oldStartTime != null && !oldStartTime.trim().isEmpty()
+                    && (!effectiveDateForOld.equals(date) || !oldStartTime.equals(startTime))) {
+                GlobalShift prevTimeGs = findUserGlobalShift(effectiveDateForOld, oldStartTime, userName);
+                if (prevTimeGs != null) {
+                    com.asystent.kinowy.alarm.AlarmScheduler.cancelAlarm(getApplication(), prevTimeGs);
+                    prevTimeGs.setHasAlarm(false);
+                    globalShiftDao.updateGlobalShift(prevTimeGs);
+                    Log.i(TAG, "🔕 Anulowano alarm po zmianie z " + effectiveDateForOld + " " + oldStartTime + " na " + date + " " + startTime);
+                }
+            }
+
+            if (startTime == null || startTime.trim().isEmpty()) {
+                com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+                com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(getApplication());
+                return;
+            }
+
+            // 0. Pobierz STARY stan dla bieżącej godziny (tylko zmiana użytkownika!)
+            GlobalShift oldGs = findUserGlobalShift(date, startTime, userName);
+
+            // 1. Aktualizuj flagi w bazie dla użytkownika
+            String effectiveUser = !userName.isEmpty() ? userName : "Użytkownik";
+            globalShiftDao.updateAlarmStateForUser(date, startTime, effectiveUser, hasAlarm, offsetMinutes);
 
             // 2. Pobierz zaktualizowany obiekt (potrzebny do AlarmScheduler)
-            GlobalShift gs = globalShiftDao.getShiftByDateAndStart(date, startTime);
+            GlobalShift gs = findUserGlobalShift(date, startTime, userName);
 
-            // 3. UPSERT: jeśli brak rekordu (ręcznie dodana zmiana / niestandardowa),
-            //    utwórz nowy GlobalShift żeby alarm miał rekord w bazie
+            // 3. UPSERT: jeśli brak rekordu dla użytkownika (ręcznie dodana zmiana / niestandardowa),
+            //    utwórz nowy GlobalShift żeby alarm miał rekord w bazie (nie podpinaj się pod współpracownika!)
             if (gs == null) {
-                Log.w(TAG, "toggleAlarmForShift: brak GlobalShift dla " + date + " " + startTime
-                        + " — tworzę nowy rekord (upsert).");
+                if (!hasAlarm) {
+                    com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+                    com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(getApplication());
+                    return;
+                }
+                Log.w(TAG, "toggleAlarmForShift: brak GlobalShift dla użytkownika " + effectiveUser
+                        + " (" + date + " " + startTime + ") — tworzę nowy rekord (upsert).");
 
-                // Walidacja: nie tworzymy rekordu z pustym endTime
                 String safeEndTime = (endTime != null && !endTime.trim().isEmpty())
-                        ? endTime.trim() : startTime; // fallback: endTime = startTime
+                        ? endTime.trim() : startTime;
 
-                String userName = targetUserName != null ? targetUserName : "Użytkownik";
-                GlobalShift newGs = new GlobalShift(userName, date, startTime, safeEndTime,
+                GlobalShift newGs = new GlobalShift(effectiveUser, date, startTime, safeEndTime,
                         category != null ? category : "UNKNOWN");
                 newGs.setHasAlarm(hasAlarm);
                 newGs.setAlarmOffsetMinutes(offsetMinutes);
-                newGs.setManuallyEdited(true); // chroniony przed parserem Excela
+                newGs.setManuallyEdited(true);
 
                 globalShiftDao.insertGlobalShift(newGs);
 
-                // Pobierz ponownie — potrzebujemy auto-generated ID
-                gs = globalShiftDao.getShiftByDateAndStart(date, startTime);
+                gs = findUserGlobalShift(date, startTime, userName);
 
                 if (gs == null) {
                     Log.e(TAG, "toggleAlarmForShift: nie udało się wstawić GlobalShift — alarm nie zostanie ustawiony.");
                     return;
                 }
                 Log.i(TAG, "✅ Utworzono GlobalShift #" + gs.getId() + " dla alarmu: " + date + " " + startTime);
+            } else {
+                // Upewnij się, że konkretny pobrany rekord ma zaktualizowane flagi
+                gs.setHasAlarm(hasAlarm);
+                gs.setAlarmOffsetMinutes(offsetMinutes);
+                globalShiftDao.updateGlobalShift(gs);
             }
 
-            // 4. Anuluj stary alarm (ważne przy edycji godziny — inaczej stary zostaje)
+            // 4. Anuluj stary alarm
             if (oldGs != null && oldGs.isHasAlarm()) {
                 com.asystent.kinowy.alarm.AlarmScheduler.cancelAlarm(getApplication(), oldGs);
                 Log.i(TAG, "🔕 Stary alarm anulowany przed re-schedule: " + date + " " + startTime);
@@ -930,6 +1024,10 @@ public class MainViewModel extends AndroidViewModel {
                 com.asystent.kinowy.alarm.AlarmScheduler.cancelAlarm(getApplication(), gs);
                 Log.i(TAG, "🔕 Alarm WYŁĄCZONY: " + date + " " + startTime);
             }
+
+            // 6. Odśwież oba widżety
+            com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+            com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(getApplication());
         });
     }
 
@@ -942,7 +1040,8 @@ public class MainViewModel extends AndroidViewModel {
      * @return GlobalShift z flagami alarmu, lub null jeśli nie znaleziono
      */
     public GlobalShift getAlarmStateForShift(String date, String startTime) {
-        return globalShiftDao.getShiftByDateAndStart(date, startTime);
+        String userName = resolveCurrentUserName();
+        return findUserGlobalShift(date, startTime, userName);
     }
 
     // ─── Shift — operacje zapisu ─────────────────────────────────────────
@@ -954,6 +1053,10 @@ public class MainViewModel extends AndroidViewModel {
 
     public LiveData<List<Tip>> getMonthlyTips() {
         return monthlyTips;
+    }
+
+    public LiveData<List<Tip>> getAllTips() {
+        return tipRepository.getAllTips();
     }
 
     public LiveData<Shift> getNextShift() {
@@ -992,6 +1095,16 @@ public class MainViewModel extends AndroidViewModel {
         if (parseResult == null) return;
         executor.execute(() -> {
             try {
+                String userName = resolveCurrentUserName();
+                // Zapamiętaj aktywne alarmy użytkownika przed czyszczeniem/nadpisaniem
+                List<GlobalShift> existingAlarms = globalShiftDao.getShiftsWithAlarmsForUser(userName);
+                java.util.Map<String, GlobalShift> savedAlarmsByKey = new java.util.HashMap<>();
+                if (existingAlarms != null) {
+                    for (GlobalShift ags : existingAlarms) {
+                        savedAlarmsByKey.put(ags.getDate() + "|" + ags.getStartTime(), ags);
+                    }
+                }
+
                 // 1. Zapis zmian ekipy
                 List<GlobalShift> globalShifts = parseResult.getAllGlobalShifts();
                 List<String> importedDates = parseResult.getAllDates();
@@ -1007,6 +1120,30 @@ public class MainViewModel extends AndroidViewModel {
                     Log.d(TAG, "Zapisano globalne zmiany (safe): " + globalShifts.size());
                 }
 
+                // Przywróć stan alarmów dla zmian z importu lub anuluj jeśli zmiana zniknęła
+                if (!savedAlarmsByKey.isEmpty()) {
+                    java.util.Set<String> importedDateSet = importedDates != null
+                            ? new java.util.HashSet<>(importedDates) : java.util.Collections.emptySet();
+                    for (java.util.Map.Entry<String, GlobalShift> entry : savedAlarmsByKey.entrySet()) {
+                        GlobalShift oldAlarmGs = entry.getValue();
+                        if (importedDateSet.contains(oldAlarmGs.getDate())) {
+                            GlobalShift currentGs = findUserGlobalShift(
+                                    oldAlarmGs.getDate(), oldAlarmGs.getStartTime(), userName);
+                            if (currentGs != null) {
+                                currentGs.setHasAlarm(true);
+                                currentGs.setAlarmOffsetMinutes(oldAlarmGs.getAlarmOffsetMinutes());
+                                globalShiftDao.updateGlobalShift(currentGs);
+                                com.asystent.kinowy.alarm.AlarmScheduler.cancelAlarm(getApplication(), oldAlarmGs);
+                                com.asystent.kinowy.alarm.AlarmScheduler.scheduleOneOffAlarm(getApplication(), currentGs);
+                            } else {
+                                com.asystent.kinowy.alarm.AlarmScheduler.cancelAlarm(getApplication(), oldAlarmGs);
+                                oldAlarmGs.setHasAlarm(false);
+                                globalShiftDao.updateGlobalShift(oldAlarmGs);
+                            }
+                        }
+                    }
+                }
+
                 // 2. Słownik pracowników
                 List<String> names = parseResult.getFoundNames();
                 if (names != null) {
@@ -1016,11 +1153,6 @@ public class MainViewModel extends AndroidViewModel {
                 }
 
                 // 3. Zmiany użytkownika — UPSERT per-date
-                // Reguła: dla każdej daty z nowego grafiku:
-                //   a) jeśli istnieje zmiana z isManual=true → chroniona, pomijamy (ręczne wpisy nienaruszalne)
-                //   b) jeśli istnieje zmiana z isManual=false → kasujemy starą, wstawiamy nową
-                //   c) zmiana → wolne: kasujemy starą zmianę (nowe wolne nie jest wstawiane do bazy)
-                //   d) wolne → zmiana: wstawiamy nową zmianę
                 List<Shift> userShifts = parseResult.getTargetUserShifts();
                 int addedCount = 0;
                 int skippedCount = 0;
@@ -1030,10 +1162,8 @@ public class MainViewModel extends AndroidViewModel {
                         String date = incoming.getDate();
                         if (date == null || date.isEmpty()) continue;
 
-                        // Sprawdź istniejące wpisy na tę datę
                         List<Shift> existing = shiftRepository.getShiftsByDateSync(date);
 
-                        // Sprawdź czy jest jakakolwiek zmiana ręczna - jeśli tak, pomijamy całkowicie
                         boolean hasManual = false;
                         for (Shift e : existing) {
                             if (e.isManual()) { hasManual = true; break; }
@@ -1048,22 +1178,23 @@ public class MainViewModel extends AndroidViewModel {
                                 && incoming.getEndTime() != null && !incoming.getEndTime().isEmpty();
 
                         if (!existing.isEmpty()) {
-                            // Kasujemy wszystkie nieręczne wpisy na tę datę
                             shiftRepository.deleteNonManualShiftsForDate(date);
                             Log.d(TAG, "[import upsert] " + date + " - usunięto " + existing.size() + " starych wpisów");
                         }
 
                         if (incomingIsShift) {
-                            // Wstawiamy nową zmianę (zmiana→zmiana lub wolne→zmiana)
                             shiftRepository.insertSync(incoming);
                             addedCount++;
                             Log.d(TAG, "[import upsert] " + date + " - wstawiono " + incoming.getStartTime() + "-" + incoming.getEndTime());
                         } else {
-                            // Nowy wpis to WOLNE - stara zmiana już skasowana, wolne nie potrzebuje wpisu w bazie
                             Log.d(TAG, "[import upsert] " + date + " - WOLNE (skasowano starą, brak wpisu)");
                         }
                     }
                 }
+
+                // Zaplanuj powiadomienia dla zaktualizowanego grafiku
+                com.asystent.kinowy.notifications.NotificationScheduler.scheduleAlarms(
+                        getApplication(), shiftRepository.getAllShiftsSync());
 
                 // 4. Logowanie w tabeli import_log
                 String timestamp = java.time.LocalDateTime.now()
@@ -1100,6 +1231,14 @@ public class MainViewModel extends AndroidViewModel {
 
     public void insertTip(Tip tip) {
         tipRepository.insert(tip);
+    }
+
+    public void updateTip(Tip tip) {
+        tipRepository.update(tip);
+    }
+
+    public void deleteTip(Tip tip) {
+        tipRepository.delete(tip);
     }
 
     public void insertLoss(Loss loss) { lossRepository.insert(loss); }
@@ -1192,17 +1331,41 @@ public class MainViewModel extends AndroidViewModel {
                                     executor.execute(() -> {
                                         try {
                                             byte[] fileBytes = Base64.decode(base64Data, Base64.URL_SAFE);
-                                            InputStream inputStream = new ByteArrayInputStream(fileBytes);
 
-                                            // Najpierw parsuj pełny grafik — do zasilenia słownika
-                                            InputStream fullParseStream = new ByteArrayInputStream(fileBytes);
-                                            ExcelParsingService.ParseResult fullResult =
-                                                    excelParsingService.parseFullSchedule(fullParseStream);
-                                            populateGlobalShifts(fullResult);
+                                            // Użyj AutoDetectExcelParser (obsługuje nowy i stary format Excela)
+                                            com.asystent.kinowy.parsers.AutoDetectExcelParser autoParser =
+                                                    new com.asystent.kinowy.parsers.AutoDetectExcelParser();
+                                            String prefRole = getApplication().getSharedPreferences(
+                                                    "asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE)
+                                                    .getString("preferred_role", null);
+                                            com.asystent.kinowy.parsers.ScheduleParseOptions opts =
+                                                    new com.asystent.kinowy.parsers.ScheduleParseOptions(
+                                                            targetUserName, prefRole, -1, true);
+                                            com.asystent.kinowy.parsers.ScheduleParseResult autoResult =
+                                                    autoParser.parse(new ByteArrayInputStream(fileBytes), opts);
 
-                                            // Następnie wyciągnij zmiany użytkownika
-                                            List<Shift> parsed = excelParsingService.parseSchedule(inputStream, targetUserName);
-                                            accumulatedShifts.addAll(parsed);
+                                            if (autoResult != null && autoResult.getAllGlobalShifts() != null
+                                                    && !autoResult.getAllGlobalShifts().isEmpty()) {
+                                                globalShiftDao.insertAllSafe(autoResult.getAllGlobalShifts());
+                                                if (autoResult.getFoundNames() != null) {
+                                                    for (String name : autoResult.getFoundNames()) {
+                                                        employeeDao.insertOrIgnore(new ActiveEmployee(name));
+                                                    }
+                                                }
+                                                if (autoResult.getTargetUserShifts() != null) {
+                                                    accumulatedShifts.addAll(autoResult.getTargetUserShifts());
+                                                }
+                                            } else {
+                                                // Fallback do klasycznego ExcelParsingService
+                                                InputStream fullParseStream = new ByteArrayInputStream(fileBytes);
+                                                ExcelParsingService.ParseResult fullResult =
+                                                        excelParsingService.parseFullSchedule(fullParseStream);
+                                                populateGlobalShifts(fullResult);
+
+                                                InputStream inputStream = new ByteArrayInputStream(fileBytes);
+                                                List<Shift> parsed = excelParsingService.parseSchedule(inputStream, targetUserName);
+                                                accumulatedShifts.addAll(parsed);
+                                            }
                                         } catch (Exception e) {
                                             Log.e(TAG, "Błąd parsowania pliku " + index, e);
                                         } finally {
@@ -1241,7 +1404,7 @@ public class MainViewModel extends AndroidViewModel {
     private void processAndMergeAllShifts(List<Shift> allParsedShifts) {
         executor.execute(() -> {
             try {
-                final List<Shift> currentDbShifts = allShifts.getValue();
+                final List<Shift> currentDbShifts = shiftRepository.getAllShiftsSync();
                 List<Shift> finalShifts = new ArrayList<>();
                 List<Shift> keptManualShifts = new ArrayList<>();
 
@@ -1256,10 +1419,8 @@ public class MainViewModel extends AndroidViewModel {
                 finalShifts.addAll(keptManualShifts);
 
                 // 2. FILTRUJEMY DUPLIKATY Z EXCELA (Nowszy mail wygrywa)
-                // Maile były pobierane od najnowszego do najstarszego, więc pierwsze na liście są najświeższe.
                 java.util.Map<String, Shift> uniqueExcelShifts = new java.util.HashMap<>();
                 for (Shift parsed : allParsedShifts) {
-                    // Jeśli jeszcze nie mamy zmiany na ten dzień z Excela, dodajemy
                     if (!uniqueExcelShifts.containsKey(parsed.getDate())) {
                         uniqueExcelShifts.put(parsed.getDate(), parsed);
                     }
@@ -1282,15 +1443,18 @@ public class MainViewModel extends AndroidViewModel {
                 // 4. ZAPIS DO BAZY
                 shiftRepository.deleteAll();
                 for (Shift shift : finalShifts) {
-                    shiftRepository.insert(shift);
+                    shiftRepository.insertSync(shift);
                 }
+
+                com.asystent.kinowy.notifications.NotificationScheduler.scheduleAlarms(
+                        getApplication(), finalShifts);
 
                 syncStatus.postValue("success:" + finalShifts.size());
                 Log.d(TAG, "Multi-Sync complete. Merged " + finalShifts.size() + " total shifts.");
 
-                // Odśwież widżet na pulpicie
-                com.asystent.kinowy.widget.ShiftWidgetProvider
-                        .triggerUpdate(getApplication());
+                // Odśwież widżety na pulpicie
+                com.asystent.kinowy.widget.ShiftWidgetProvider.triggerUpdate(getApplication());
+                com.asystent.kinowy.widget.ShiftStackWidgetProvider.triggerUpdate(getApplication());
 
             } catch (Exception e) {
                 Log.e(TAG, "Error saving merged schedule", e);

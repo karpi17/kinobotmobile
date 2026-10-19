@@ -31,19 +31,60 @@ import java.util.concurrent.Executors;
  */
 public class PayrollBottomSheet extends BottomSheetDialogFragment {
 
-    private final String targetMonthYear;
-    private final double calculatedHours;
-    private final double calculatedSalary;
+    private static final String ARG_TARGET_MONTH = "target_month_year";
+    private static final String ARG_CALC_HOURS = "calculated_hours";
+    private static final String ARG_CALC_SALARY = "calculated_salary";
+    private static final String ARG_NIGHT_HOURS = "night_hours";
+
+    private String targetMonthYear = "";
+    private double calculatedHours = 0.0;
+    private double calculatedSalary = 0.0;
+    private double nightHours = 0.0;
 
     // Tryb edycji — true jeśli raport już istnieje w bazie
     private boolean isEditMode = false;
     // Zapamiętana wartość: paperHours * stawka
     private double paperCalculatedSalary = 0.0;
 
+    public PayrollBottomSheet() {
+        // Required empty public constructor
+    }
+
     public PayrollBottomSheet(String targetMonthYear, double calculatedHours, double calculatedSalary) {
-        this.targetMonthYear = targetMonthYear;
+        this(targetMonthYear, calculatedHours, calculatedSalary, 0.0);
+    }
+
+    public PayrollBottomSheet(String targetMonthYear, double calculatedHours, double calculatedSalary, double nightHours) {
+        this.targetMonthYear = targetMonthYear != null ? targetMonthYear : "";
         this.calculatedHours = calculatedHours;
         this.calculatedSalary = calculatedSalary;
+        this.nightHours = nightHours;
+        Bundle args = new Bundle();
+        args.putString(ARG_TARGET_MONTH, this.targetMonthYear);
+        args.putDouble(ARG_CALC_HOURS, calculatedHours);
+        args.putDouble(ARG_CALC_SALARY, calculatedSalary);
+        args.putDouble(ARG_NIGHT_HOURS, nightHours);
+        setArguments(args);
+    }
+
+    public static PayrollBottomSheet newInstance(String targetMonthYear, double calculatedHours, double calculatedSalary) {
+        return new PayrollBottomSheet(targetMonthYear, calculatedHours, calculatedSalary, 0.0);
+    }
+
+    public static PayrollBottomSheet newInstance(String targetMonthYear, double calculatedHours, double calculatedSalary, double nightHours) {
+        return new PayrollBottomSheet(targetMonthYear, calculatedHours, calculatedSalary, nightHours);
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        Bundle args = getArguments();
+        if (args != null) {
+            targetMonthYear = args.getString(ARG_TARGET_MONTH, targetMonthYear);
+            calculatedHours = args.getDouble(ARG_CALC_HOURS, calculatedHours);
+            calculatedSalary = args.getDouble(ARG_CALC_SALARY, calculatedSalary);
+            nightHours = args.getDouble(ARG_NIGHT_HOURS, nightHours);
+        }
     }
 
     @Nullable
@@ -57,10 +98,27 @@ public class PayrollBottomSheet extends BottomSheetDialogFragment {
         super.onViewCreated(view, savedInstanceState);
 
         MainViewModel vm = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
+        MainViewModel.PayrollInfo payrollInfo = vm.getMonthlyPayroll().getValue();
+        if (nightHours <= 0 && targetMonthYear != null) {
+            if (payrollInfo != null && targetMonthYear.equals(vm.getCurrentMonthPrefix())) {
+                nightHours = payrollInfo.getNightHours();
+            } else if (vm.getAllShifts().getValue() != null) {
+                double computedNight = 0.0;
+                for (com.asystent.kinowy.models.Shift s : vm.getAllShifts().getValue()) {
+                    if (s != null && !s.isReplacement() && s.getDate() != null
+                            && s.getDate().startsWith(targetMonthYear)) {
+                        computedNight += com.asystent.kinowy.utils.PayrollCalculator.calculateNightHours(
+                                s.getStartTime(), s.getEndTime());
+                    }
+                }
+                nightHours = Math.round(computedNight * 100.0) / 100.0;
+            }
+        }
 
         // --- UI Refs ---
         TextView tvTitle = view.findViewById(R.id.tv_report_title);
         TextView tvCalcHours = view.findViewById(R.id.tv_calc_hours);
+        TextView tvCalcNightHours = view.findViewById(R.id.tv_calc_night_hours);
         TextView tvCalcSalary = view.findViewById(R.id.tv_calc_salary);
         TextView tvPaperSalary = view.findViewById(R.id.tv_paper_salary);
         TextView tvDifference = view.findViewById(R.id.tv_difference);
@@ -70,11 +128,16 @@ public class PayrollBottomSheet extends BottomSheetDialogFragment {
         // --- Statyczne dane z systemu ---
         tvTitle.setText(String.format("Archiwizacja Miesiąca: %s", targetMonthYear));
         tvCalcHours.setText(String.format(Locale.getDefault(), "%.2f h", calculatedHours));
+        if (tvCalcNightHours != null) {
+            tvCalcNightHours.setText(String.format(Locale.getDefault(), "%.1f h", nightHours));
+        }
         tvCalcSalary.setText(String.format(Locale.getDefault(), "%.2f zł", calculatedSalary));
 
         // --- Pobierz stawkę godzinową ---
         Float rateObj = vm.getHourlyRateLive().getValue();
-        final float hourlyRate = (rateObj != null) ? rateObj : 0f;
+        float fallbackRate = (rateObj != null) ? rateObj : 0f;
+        final float hourlyRate = (payrollInfo != null && payrollInfo.getHourlyRate() > 0)
+                ? payrollInfo.getHourlyRate() : fallbackRate;
 
         // ═══════════════════════════════════════════════════════════════
         // KROK 2: TextWatcher — "Godziny z papierka" → reaktywne obliczenie

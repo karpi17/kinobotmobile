@@ -53,9 +53,17 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
-        for (int widgetId : appWidgetIds) {
-            updateWidget(context, appWidgetManager, widgetId);
-        }
+        final PendingResult pendingResult = goAsync();
+        final Context appCtx = context.getApplicationContext();
+        executor.execute(() -> {
+            try {
+                for (int widgetId : appWidgetIds) {
+                    updateWidgetSync(appCtx, appWidgetManager, widgetId);
+                }
+            } finally {
+                pendingResult.finish();
+            }
+        });
     }
 
     @Override
@@ -66,26 +74,24 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
         }
     }
 
-    private void updateWidget(Context context, AppWidgetManager manager, int widgetId) {
-        executor.execute(() -> {
-            try {
-                AppDatabase db = AppDatabase.getInstance(context.getApplicationContext());
-                ShiftDao shiftDao = db.shiftDao();
-                GlobalShiftDao globalShiftDao = db.globalShiftDao();
+    private void updateWidgetSync(Context context, AppWidgetManager manager, int widgetId) {
+        try {
+            AppDatabase db = AppDatabase.getInstance(context.getApplicationContext());
+            ShiftDao shiftDao = db.shiftDao();
+            GlobalShiftDao globalShiftDao = db.globalShiftDao();
 
-                String userName = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                        .getString(PREF_USER_NAME, "");
+            String userName = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .getString(PREF_USER_NAME, "");
 
-                // Filtrujemy zmiany oddane (isReplacement=true) — to nie Twoje zmiany
-                Shift nextShift = findNextShift(shiftDao.getAllShiftsSync());
-                RemoteViews views = buildViews(context, nextShift, globalShiftDao, userName);
-                manager.updateAppWidget(widgetId, views);
-            } catch (Exception e) {
-                RemoteViews fallback = new RemoteViews(context.getPackageName(), R.layout.widget_shift);
-                fallback.setTextViewText(R.id.widget_time, "Błąd odświeżania");
-                manager.updateAppWidget(widgetId, fallback);
-            }
-        });
+            // Filtrujemy zmiany oddane (isReplacement=true) — to nie Twoje zmiany
+            Shift nextShift = findNextShift(shiftDao.getAllShiftsSync());
+            RemoteViews views = buildViews(context, nextShift, globalShiftDao, userName);
+            manager.updateAppWidget(widgetId, views);
+        } catch (Exception e) {
+            RemoteViews fallback = new RemoteViews(context.getPackageName(), R.layout.widget_shift);
+            fallback.setTextViewText(R.id.widget_time, "Błąd odświeżania");
+            manager.updateAppWidget(widgetId, fallback);
+        }
     }
 
     private RemoteViews buildViews(Context context, Shift shift, GlobalShiftDao globalShiftDao, String userName) {
@@ -133,12 +139,16 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
         // ═══ Stanowisko + ikona alarmu ═══
         String cat = shift.getCategory();
         boolean hasCategory = cat != null && !cat.isEmpty() && !"UNKNOWN".equals(cat);
-        if (hasCategory) {
-            views.setTextViewText(R.id.widget_category, cat);
+        boolean hasAlarm = checkAlarm(globalShiftDao, shift.getDate(), shift.getStartTime(), userName);
+        if (hasCategory || hasAlarm) {
             views.setViewVisibility(R.id.widget_category_row, View.VISIBLE);
-
-            // Alarm — sprawdź czy GlobalShift ma alarm
-            boolean hasAlarm = checkAlarm(globalShiftDao, shift.getDate(), shift.getStartTime());
+            if (hasCategory) {
+                views.setTextViewText(R.id.widget_category, cat);
+                views.setViewVisibility(R.id.widget_category, View.VISIBLE);
+            } else {
+                views.setViewVisibility(R.id.widget_category, View.GONE);
+            }
+            views.setTextViewText(R.id.widget_alarm_icon, hasCategory ? "  🔔" : "🔔");
             views.setViewVisibility(R.id.widget_alarm_icon, hasAlarm ? View.VISIBLE : View.GONE);
         } else {
             views.setViewVisibility(R.id.widget_category_row, View.GONE);
@@ -237,9 +247,14 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
     /**
      * Sprawdza czy GlobalShift powiązany z tą zmianą ma aktywny alarm.
      */
-    private boolean checkAlarm(GlobalShiftDao dao, String date, String startTime) {
+    private boolean checkAlarm(GlobalShiftDao dao, String date, String startTime, String userName) {
         try {
-            GlobalShift gs = dao.getShiftByDateAndStart(date, startTime);
+            GlobalShift gs = (userName != null && !userName.trim().isEmpty())
+                    ? dao.getShiftByDateStartAndUser(date, startTime, userName.trim())
+                    : dao.getShiftByDateAndStart(date, startTime);
+            if (gs == null && userName != null && !userName.trim().isEmpty()) {
+                gs = dao.getShiftByDateStartAndUser(date, startTime, "Użytkownik");
+            }
             return gs != null && gs.isHasAlarm();
         } catch (Exception e) {
             return false;

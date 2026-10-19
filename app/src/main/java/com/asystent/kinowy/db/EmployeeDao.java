@@ -27,10 +27,20 @@ public interface EmployeeDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     void insertOrIgnore(ActiveEmployee employee);
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    void insertAll(List<ActiveEmployee> employees);
+
     /**
      * Zwraca wszystkie imiona pracowników, posortowane alfabetycznie.
      * LiveData — automatycznie reaguje na zmiany w tabeli.
      */
     @Query("SELECT name FROM active_employees ORDER BY name ASC")
     LiveData<List<String>> getAllEmployeeNames();
+
+    @Query("SELECT * FROM active_employees ORDER BY name ASC")
+    List<ActiveEmployee> getAllEmployeesSync();
+
+    default List<ActiveEmployee> getAllActiveEmployeesSync() {
+        return getAllEmployeesSync();
+    }
 }

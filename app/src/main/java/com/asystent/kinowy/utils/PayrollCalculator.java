@@ -28,11 +28,39 @@ public final class PayrollCalculator {
     }
 
     /**
+     * Wylicza liczbę przepracowanych godzin dla zmiany (obsługuje zmiany nocne przechodzące przez północ).
+     */
+    public static double calculateShiftHours(String startTimeStr, String endTimeStr) {
+        if (startTimeStr == null || endTimeStr == null) return 0.0;
+        String s = startTimeStr.trim();
+        String e = endTimeStr.trim();
+        if (s.isEmpty() || e.isEmpty()) return 0.0;
+        if (s.length() == 4 && s.charAt(1) == ':') s = "0" + s;
+        if (e.length() == 4 && e.charAt(1) == ':') e = "0" + e;
+        try {
+            java.time.LocalTime start = java.time.LocalTime.parse(s);
+            java.time.LocalTime end = java.time.LocalTime.parse(e);
+            long mins = java.time.Duration.between(start, end).toMinutes();
+            if (mins < 0) mins += 24 * 60;
+            return mins / 60.0;
+        } catch (Exception ex) {
+            return 0.0;
+        }
+    }
+
+    /**
      * Wylicza sumaryczną ostateczną wycenę gotówkową z uwzględnieniem strat (odliczeń) oraz otrzymanych napiwków.
      */
     public static double calculateNetWithDeductions(double baseSalary, double totalLosses, double totalTips) {
         double afterLosses = Math.max(0.0, baseSalary - Math.max(0.0, totalLosses));
         return afterLosses + Math.max(0.0, totalTips);
+    }
+
+    /**
+     * Alias dla {@link #calculateNetWithDeductions(double, double, double)}.
+     */
+    public static double calculateNetPay(double baseSalary, double totalLosses, double totalTips) {
+        return calculateNetWithDeductions(baseSalary, totalLosses, totalTips);
     }
 
     /**
@@ -55,6 +83,59 @@ public final class PayrollCalculator {
         } else {
             return String.format(Locale.getDefault(), "Brakuje z wyliczenia: %.2f zł", diff);
         }
+    }
+
+    /**
+     * Oblicza liczbę godzin przypadających na porę nocną (22:00–06:00) dla pojedynczej zmiany.
+     * Obsługuje zmiany przechodzące przez północ (np. 17:00–01:00 -> 3.0h w porze nocnej).
+     */
+    public static double calculateNightHours(String startTimeStr, String endTimeStr) {
+        if (startTimeStr == null || endTimeStr == null) return 0.0;
+        String s = startTimeStr.trim();
+        String e = endTimeStr.trim();
+        if (s.isEmpty() || e.isEmpty()) return 0.0;
+        if (s.length() == 4 && s.charAt(1) == ':') s = "0" + s;
+        if (e.length() == 4 && e.charAt(1) == ':') e = "0" + e;
+        try {
+            java.time.LocalTime start = java.time.LocalTime.parse(s);
+            java.time.LocalTime end = java.time.LocalTime.parse(e);
+            return calculateNightHours(start, end);
+        } catch (Exception ex) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Oblicza liczbę godzin przypadających na porę nocną (22:00–06:00) pomiędzy start a end.
+     */
+    public static double calculateNightHours(java.time.LocalTime start, java.time.LocalTime end) {
+        if (start == null || end == null) return 0.0;
+        int startMin = start.getHour() * 60 + start.getMinute();
+        int endMin = end.getHour() * 60 + end.getMinute();
+        if (startMin == endMin) return 0.0;
+        if (endMin < startMin) {
+            endMin += 24 * 60;
+        }
+
+        // Przedziały nocne (22:00–06:00) w przestrzeni minut [0, 2880]:
+        // 1) 00:00–06:00 dnia pierwszego: [0, 360]
+        // 2) 22:00 dnia pierwszego – 06:00 dnia drugiego: [1320, 1800]
+        // 3) 22:00–24:00 dnia drugiego: [2760, 2880]
+        int[][] nightWindows = {
+                {0, 6 * 60},
+                {22 * 60, 30 * 60},
+                {46 * 60, 48 * 60}
+        };
+
+        int nightMinutes = 0;
+        for (int[] window : nightWindows) {
+            int overlapStart = Math.max(startMin, window[0]);
+            int overlapEnd = Math.min(endMin, window[1]);
+            if (overlapEnd > overlapStart) {
+                nightMinutes += (overlapEnd - overlapStart);
+            }
+        }
+        return nightMinutes / 60.0;
     }
 
     // =========================================================================

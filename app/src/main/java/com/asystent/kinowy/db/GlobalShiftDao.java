@@ -69,22 +69,47 @@ public interface GlobalShiftDao {
     void updateAlarmState(String date, String startTime, boolean hasAlarm, int offset);
 
     /**
+     * Aktualizuje stan alarmu tylko dla rekordu należącego do użytkownika.
+     */
+    @Query("UPDATE global_shifts SET has_alarm = :hasAlarm, alarm_offset_minutes = :offset " +
+           "WHERE date = :date AND start_time = :startTime AND is_deleted = 0 " +
+           "AND (:userName IS NULL OR :userName = '' OR LOWER(name) LIKE '%' || LOWER(:userName) || '%' OR name = 'Użytkownik')")
+    int updateAlarmStateForUser(String date, String startTime, String userName, boolean hasAlarm, int offset);
+
+    /**
      * Pobiera wszystkie zmiany z aktywnym alarmem (do reschedulingu po rebocie).
      */
     @Query("SELECT * FROM global_shifts WHERE has_alarm = 1 AND is_deleted = 0 ORDER BY date ASC, start_time ASC")
     List<GlobalShift> getShiftsWithAlarms();
 
     /**
-     * Pobiera pierwszą zmianę dla danej daty i godziny startu (synchroniczne).
-     * Używane do sprawdzenia stanu alarmu przy otwieraniu dialogu zmiany.
+     * Pobiera zmiany z aktywnym alarmem należące do użytkownika.
+     */
+    @Query("SELECT * FROM global_shifts WHERE has_alarm = 1 AND is_deleted = 0 " +
+           "AND (:userName IS NULL OR :userName = '' OR LOWER(name) LIKE '%' || LOWER(:userName) || '%' OR name = 'Użytkownik') " +
+           "ORDER BY date ASC, start_time ASC")
+    List<GlobalShift> getShiftsWithAlarmsForUser(String userName);
+
+    /**
+     * Pobiera pierwszą zmianę dla danej daty i godziny startu (synchroniczne),
+     * preferując rekordy z aktywnym alarmem i ręcznie edytowane.
      *
      * @param date      data zmiany (yyyy-MM-dd)
      * @param startTime godzina startu (HH:mm)
      * @return GlobalShift z flagami alarmu, lub null
      */
     @Query("SELECT * FROM global_shifts WHERE date = :date AND start_time = :startTime " +
-           "AND is_deleted = 0 LIMIT 1")
+           "AND is_deleted = 0 ORDER BY has_alarm DESC, is_manually_edited DESC LIMIT 1")
     GlobalShift getShiftByDateAndStart(String date, String startTime);
+
+    /**
+     * Pobiera zmianę użytkownika dla danej daty i godziny startu (synchroniczne).
+     */
+    @Query("SELECT * FROM global_shifts WHERE date = :date AND start_time = :startTime " +
+           "AND is_deleted = 0 " +
+           "AND (:userName IS NULL OR :userName = '' OR LOWER(name) LIKE '%' || LOWER(:userName) || '%' OR name = 'Użytkownik') " +
+           "ORDER BY has_alarm DESC, is_manually_edited DESC LIMIT 1")
+    GlobalShift getShiftByDateStartAndUser(String date, String startTime, String userName);
     /**
      * Pobiera wszystkie zmiany dla danej daty.
      * Synchroniczne — wywoływać na wątku w tle.

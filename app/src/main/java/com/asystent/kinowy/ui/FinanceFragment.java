@@ -231,6 +231,30 @@ public class FinanceFragment extends Fragment {
 
     private void setupLossesList() {
         lossAdapter = new LossAdapter();
+        lossAdapter.setOnDeleteListeners(
+                loss -> new com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                        .setTitle("Usuń stratę?")
+                        .setMessage(String.format(Locale.getDefault(),
+                                "Czy na pewno chcesz usunąć stratę %.2f zł z dnia %s?",
+                                loss.getAmount(), loss.getDate()))
+                        .setPositiveButton("Usuń", (d, w) -> {
+                            viewModel.deleteLoss(loss);
+                            Toast.makeText(requireContext(), "Usunięto stratę", Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton("Anuluj", null)
+                        .show(),
+                tip -> new com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                        .setTitle("Usuń napiwek?")
+                        .setMessage(String.format(Locale.getDefault(),
+                                "Czy na pewno chcesz usunąć napiwek %.2f zł z dnia %s?",
+                                tip.getAmount(), tip.getDate()))
+                        .setPositiveButton("Usuń", (d, w) -> {
+                            viewModel.deleteTip(tip);
+                            Toast.makeText(requireContext(), "Usunięto napiwek", Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton("Anuluj", null)
+                        .show()
+        );
         rvLosses.setLayoutManager(new LinearLayoutManager(requireContext()));
         rvLosses.setAdapter(lossAdapter);
     }
@@ -249,13 +273,17 @@ public class FinanceFragment extends Fragment {
             // Główna kwota
             tvSummaryAmount.setText(String.format(Locale.getDefault(), "%.2f zł", payrollInfo.getNetPay()));
 
-            // Szczegóły (Per-Shift — stawka może być różna)
-            tvSummaryDetails.setText(String.format(
-                    "%.1f h × ~%.2f zł − %.2f zł strat + %.2f zł napiwków",
+            // Szczegóły (Per-Shift — stawka może być różna + godziny nocne)
+            String nightSuffix = payrollInfo.getNightHours() > 0
+                    ? String.format(Locale.getDefault(), " • 🌙 %.1f h nocnych", payrollInfo.getNightHours())
+                    : "";
+            tvSummaryDetails.setText(String.format(Locale.getDefault(),
+                    "%.1f h × %.2f zł − %.2f zł strat + %.2f zł napiwków%s",
                     payrollInfo.getTotalHours(),
                     payrollInfo.getHourlyRate(),
                     payrollInfo.getTotalLosses(),
-                    payrollInfo.getTotalTips()
+                    payrollInfo.getTotalTips(),
+                    nightSuffix
             ));
 
             // Progress celu
@@ -311,6 +339,7 @@ public class FinanceFragment extends Fragment {
                     totalEarnedGross += b.earned;
                 }
                 sb.append(String.format(Locale.getDefault(), "\nRazem brutto: %.2f zł", totalEarnedGross));
+                sb.append(String.format(Locale.getDefault(), "\nGodziny nocne (22:00-06:00): %.1f h", payroll.getNightHours()));
                 
                 if (payroll.getTotalLosses() > 0) {
                     sb.append(String.format(Locale.getDefault(), "\nOdliczono straty: -%.2f zł", payroll.getTotalLosses()));
@@ -330,15 +359,22 @@ public class FinanceFragment extends Fragment {
     }
 
     private void observeMonthlyLosses() {
-        viewModel.getMonthlyLosses().observe(getViewLifecycleOwner(), losses -> {
-            if (losses == null || losses.isEmpty()) {
+        Runnable updateTransactionsList = () -> {
+            java.util.List<Loss> losses = viewModel.getMonthlyLosses().getValue();
+            java.util.List<com.asystent.kinowy.models.Tip> tips = viewModel.getMonthlyTips().getValue();
+            boolean hasLosses = losses != null && !losses.isEmpty();
+            boolean hasTips = tips != null && !tips.isEmpty();
+            if (!hasLosses && !hasTips) {
                 rvLosses.setVisibility(View.GONE);
                 tvLossesEmpty.setVisibility(View.VISIBLE);
             } else {
                 rvLosses.setVisibility(View.VISIBLE);
                 tvLossesEmpty.setVisibility(View.GONE);
-                lossAdapter.setLosses(losses);
+                lossAdapter.setTransactions(losses, tips);
             }
-        });
+        };
+
+        viewModel.getMonthlyLosses().observe(getViewLifecycleOwner(), losses -> updateTransactionsList.run());
+        viewModel.getMonthlyTips().observe(getViewLifecycleOwner(), tips -> updateTransactionsList.run());
     }
 }

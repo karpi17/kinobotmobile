@@ -235,10 +235,13 @@ public class DashboardFragment extends Fragment {
 
         viewModel.getPendingImport().observe(getViewLifecycleOwner(), result -> {
             if (result != null) {
-                getParentFragmentManager().beginTransaction()
-                        .replace(R.id.fragment_container, new ImportPreviewFragment())
-                        .addToBackStack(null)
-                        .commit();
+                if (getParentFragmentManager().findFragmentByTag("import_preview") == null) {
+                    getParentFragmentManager().beginTransaction()
+                            .hide(DashboardFragment.this)
+                            .add(R.id.fragment_container, new ImportPreviewFragment(), "import_preview")
+                            .addToBackStack("import_preview")
+                            .commit();
+                }
             }
         });
 
@@ -268,24 +271,32 @@ public class DashboardFragment extends Fragment {
             String targetMonth = String.format(java.util.Locale.US, "%04d-%02d", lastMonth.getYear(), lastMonth.getMonthValue());
             
             double calcHours = 0.0;
+            double calcGross = 0.0;
             double calcLosses = 0.0;
+            double calcTips = 0.0;
+
+            Float fallbackRateObj = viewModel.getHourlyRateLive().getValue();
+            float fallbackRate = fallbackRateObj != null ? fallbackRateObj : 0f;
+            java.util.List<com.asystent.kinowy.models.RateHistory> rates = viewModel.getAllRates().getValue();
             
             java.util.List<com.asystent.kinowy.models.Shift> shifts = viewModel.getAllShifts().getValue();
             if (shifts != null) {
                 for (com.asystent.kinowy.models.Shift s : shifts) {
                     if (s.getDate() != null && s.getDate().startsWith(targetMonth) && !s.isReplacement()) {
-                        String startStr = s.getStartTime();
-                        String endStr = s.getEndTime();
-                        if (startStr != null && endStr != null && startStr.contains(":") && endStr.contains(":")) {
-                            String[] sP = startStr.split(":");
-                            String[] eP = endStr.split(":");
-                            try {
-                                java.time.LocalTime t1 = java.time.LocalTime.of(Integer.parseInt(sP[0]), Integer.parseInt(sP[1]));
-                                java.time.LocalTime t2 = java.time.LocalTime.of(Integer.parseInt(eP[0]), Integer.parseInt(eP[1]));
-                                long min = java.time.Duration.between(t1, t2).toMinutes();
-                                if (min < 0) min += 24 * 60;
-                                calcHours += (min / 60.0);
-                            } catch (Exception ignored) {}
+                        double shiftHours = com.asystent.kinowy.utils.PayrollCalculator.calculateShiftHours(
+                                s.getStartTime(), s.getEndTime());
+                        if (shiftHours > 0) {
+                            calcHours += shiftHours;
+                            double shiftRate = fallbackRate;
+                            if (rates != null && !rates.isEmpty()) {
+                                for (com.asystent.kinowy.models.RateHistory rh : rates) {
+                                    if (rh.getActiveFrom() != null && rh.getActiveFrom().compareTo(s.getDate()) <= 0) {
+                                        shiftRate = rh.getRate();
+                                        break;
+                                    }
+                                }
+                            }
+                            calcGross += shiftHours * shiftRate;
                         }
                     }
                 }
@@ -299,13 +310,19 @@ public class DashboardFragment extends Fragment {
                     }
                 }
             }
-            
-            Float rate = viewModel.getHourlyRateLive().getValue();
-            if (rate == null) rate = 0f;
-            
-            double calcSalary = Math.max(0, calcHours * rate - calcLosses);
 
-            MonthlyReportDialog dialog = new MonthlyReportDialog(targetMonth, calcHours, calcSalary);
+            java.util.List<com.asystent.kinowy.models.Tip> tips = viewModel.getAllTips().getValue();
+            if (tips != null) {
+                for (com.asystent.kinowy.models.Tip t : tips) {
+                    if (t.getDate() != null && t.getDate().startsWith(targetMonth)) {
+                        calcTips += t.getAmount();
+                    }
+                }
+            }
+            
+            double calcSalary = com.asystent.kinowy.utils.PayrollCalculator.calculateNetPay(calcGross, calcLosses, calcTips);
+
+            MonthlyReportDialog dialog = MonthlyReportDialog.newInstance(targetMonth, calcHours, calcSalary);
             dialog.show(getParentFragmentManager(), "MonthlyReportDialog");
         });
 
@@ -314,22 +331,13 @@ public class DashboardFragment extends Fragment {
 
         btnPayrollDetails.setOnClickListener(v -> {
             MainViewModel.PayrollInfo payroll = viewModel.getMonthlyPayroll().getValue();
-            Float rate = viewModel.getHourlyRateLive().getValue();
-            double totalLosses = 0.0;
-            java.util.List<com.asystent.kinowy.models.Loss> losses = viewModel.getAllLosses().getValue();
-            if (losses != null) {
-                for (com.asystent.kinowy.models.Loss l : losses) {
-                    if (l.getDate() != null && l.getDate().startsWith(viewModel.getCurrentMonthPrefix())) {
-                        totalLosses += l.getAmount();
-                    }
-                }
-            }
             double hours = payroll != null ? payroll.getTotalHours() : 0.0;
-            double actualRate = (rate != null) ? rate : 0.0;
-            double calculatedSalary = Math.max(0, hours * actualRate - totalLosses);
-            String targetMonth = viewModel.getCurrentMonthPrefix(); // e.g., "2026-03"
+            double nightHours = payroll != null ? payroll.getNightHours() : 0.0;
+            double calculatedSalary = payroll != null ? payroll.getNetPay() : 0.0;
+            String targetMonth = viewModel.getCurrentMonthPrefix();
             
-            PayrollBottomSheet bottomSheet = new PayrollBottomSheet(targetMonth, hours, calculatedSalary);
+            PayrollBottomSheet bottomSheet = PayrollBottomSheet.newInstance(
+                    targetMonth, hours, calculatedSalary, nightHours);
             bottomSheet.show(getParentFragmentManager(), "PayrollBottomSheet");
         });
 
@@ -386,6 +394,7 @@ public class DashboardFragment extends Fragment {
 
         viewModel.getMonthlyHoursGoal().observe(getViewLifecycleOwner(), goal -> updateProgressUI());
         viewModel.getMonthlyPayroll().observe(getViewLifecycleOwner(), payroll -> updateProgressUI());
+        viewModel.getAllShifts().observe(getViewLifecycleOwner(), shifts -> updateProgressUI());
     }
 
     private void updateProgressUI() {
@@ -402,33 +411,39 @@ public class DashboardFragment extends Fragment {
         String text = String.format(Locale.getDefault(), "Przepracowano: %.1fh / Cel: %dh (%d%%)", hours, goal, progress);
         tvProgressText.setText(text);
         
-        // Calculate BAR vs OW hours for the donut chart
-        double barHours = 0;
-        double owHours = 0;
+        // Wylicz godziny per stanowisko dla wszystkich kategorii w tym miesiącu
+        java.util.Map<String, Double> categoryHours = new java.util.LinkedHashMap<>();
         java.util.List<com.asystent.kinowy.models.Shift> shifts = viewModel.getAllShifts().getValue();
         String monthPrefix = viewModel.getCurrentMonthPrefix();
         if (shifts != null) {
             for (com.asystent.kinowy.models.Shift s : shifts) {
                 if (s.getDate() == null || !s.getDate().startsWith(monthPrefix) || s.isReplacement()) continue;
-                double h = 0;
-                String startStr = s.getStartTime();
-                String endStr = s.getEndTime();
-                if (startStr != null && !startStr.isEmpty() && endStr != null && !endStr.isEmpty()) {
-                    try {
-                        java.time.LocalTime t1 = java.time.LocalTime.parse(startStr, java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-                        java.time.LocalTime t2 = java.time.LocalTime.parse(endStr, java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-                        h = com.asystent.kinowy.network.ExcelParsingService.calculateHours(t1, t2);
-                    } catch (Exception ignored) {}
+                String rawCat = s.getCategory() != null ? s.getCategory().trim() : "";
+                if ("WOLNE".equalsIgnoreCase(rawCat)) continue;
+
+                double h = com.asystent.kinowy.utils.PayrollCalculator.calculateShiftHours(
+                        s.getStartTime(), s.getEndTime());
+                if (h <= 0) continue;
+
+                String normalizedCat;
+                String upperCat = rawCat.toUpperCase(Locale.ROOT);
+                if (upperCat.contains("BAR")) {
+                    normalizedCat = "BAR";
+                } else if (upperCat.contains("OW") || upperCat.contains("SP") || upperCat.contains("OBSŁUGA") || upperCat.contains("OBSLUGA")) {
+                    normalizedCat = "OW";
+                } else if (upperCat.contains("ZAMEK")) {
+                    normalizedCat = "ZAMEK";
+                } else if (upperCat.contains("TMS") || upperCat.contains("INNE")) {
+                    normalizedCat = "TMS / INNE";
+                } else if (!rawCat.isEmpty() && !"UNKNOWN".equalsIgnoreCase(rawCat)) {
+                    normalizedCat = rawCat;
+                } else {
+                    normalizedCat = "INNE";
                 }
-                String cat = s.getCategory();
-                if (cat != null && cat.contains("BAR")) {
-                    barHours += h;
-                } else if (cat != null && (cat.contains("OW") || cat.contains("SP"))) {
-                    owHours += h;
-                }
+                categoryHours.put(normalizedCat, categoryHours.getOrDefault(normalizedCat, 0.0) + h);
             }
         }
-        carouselAdapter.updateAnalytics(barHours, owHours);
+        carouselAdapter.updateAnalytics(categoryHours);
     }
 
     // ─── Google Sign-In ──────────────────────────────────────────────────

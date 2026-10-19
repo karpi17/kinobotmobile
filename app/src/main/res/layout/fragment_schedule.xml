@@ -69,6 +69,15 @@
                 android:textStyle="bold" />
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_manager_day_view"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="👥 Obsada"
+                android:textColor="#FF6600" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_export_calendar"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
