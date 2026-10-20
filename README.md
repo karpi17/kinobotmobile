@@ -19,7 +19,7 @@ Nazywam się **Kacper Wernerowicz** i zbudowałem **KinoBota**.
 
 Grafiki pracy w kinach, gastronomii i retailu to codzienny chaos. Zmiany wpadają mailem w zawiłych arkuszach Excela albo wiszą jako kartki na tablicy korkowej, nierzadko kończąc się głęboko w nocy (tzw. „zamki" do 01:00). Zamiast ręcznie przepisywać to do kalendarza, szukać zastępstw na grupach na Messengerze i liczyć pensję na kalkulatorze, napisałem aplikację, która automatyzuje cały proces — od odbioru grafiku po rozliczenie finansowe.
 
-To **nie jest** szablonowy projekt wygenerowany jednym promptem. To dojrzała, natywna aplikacja na Androida oparta o wzorzec MVVM, relacyjną bazę Room oraz architekturę SSoT (Single Source of Truth), radząca sobie z brudnymi danymi świata rzeczywistego.
+Aplikacja została zbudowana od zera jako w pełni natywne rozwiązanie na Androida w architekturze MVVM z relacyjną bazą Room (SSoT), zaprojektowane z myślą o niezawodności i obsłudze niestandardowych danych w codziennym środowisku pracy.
 
 ---
 
@@ -132,7 +132,7 @@ I'm **Kacper Wernerowicz**, and I built **KinoBot**.
 
 Cinema, hospitality, and retail scheduling is notoriously chaotic. Shifts are sent via complex spreadsheets or posted on corkboards, frequently finishing late at night (past midnight "closing" shifts). Instead of manually transcribing hours into a calendar, asking coworkers for shift swaps on messaging groups, and recalculating pay in spreadsheets, I engineered an Android application that automates the entire lifecycle — from schedule ingestion to payroll audit.
 
-This is **not** a generic one-prompt CRUD demo. It is a production-grade, native Android application built on MVVM, Room Database, and a Single Source of Truth (SSoT) architecture designed specifically to handle messy, real-world shift data.
+Built from the ground up as a native Android application following the MVVM architecture and Room Database (SSoT), KinoBot is designed for high reliability and operational resilience when working with messy, real-world scheduling data.
 
 ---
 
