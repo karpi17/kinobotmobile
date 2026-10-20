@@ -45,6 +45,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
     private ShiftAdapter adapter;
     private RecyclerView rvShifts;
     private TextView tvEmpty;
+    private androidx.appcompat.app.AlertDialog currentShiftDialog;
 
     /** Okno zamkowe — godziny uznawane za nocną zmianę (zamek) */
     private static final LocalTime CLOSING_START = LocalTime.of(0, 0);
@@ -705,13 +706,11 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         );
         etClosingCrew.setAdapter(crewAdapter);
 
-        viewModel.getClosingCrewSuggestions().observe(getViewLifecycleOwner(), suggestions -> {
-            if (suggestions != null) {
-                crewAdapter.clear();
-                crewAdapter.addAll(suggestions);
-                crewAdapter.notifyDataSetChanged();
-            }
-        });
+        // Wypełnij podpowiedzi pracowników snapshotem z ViewModelu
+        List<String> currentSuggestions = viewModel.getClosingCrewSuggestions().getValue();
+        if (currentSuggestions != null) {
+            crewAdapter.addAll(currentSuggestions);
+        }
 
         // 1. Data — z auto-refresh współpracowników
         etDate.setFocusable(false);
@@ -857,6 +856,23 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             });
         }
 
-        builder.show();
+        if (currentShiftDialog != null && currentShiftDialog.isShowing()) {
+            try {
+                currentShiftDialog.dismiss();
+            } catch (Exception ignored) {}
+        }
+        currentShiftDialog = builder.create();
+        currentShiftDialog.show();
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (currentShiftDialog != null && currentShiftDialog.isShowing()) {
+            try {
+                currentShiftDialog.dismiss();
+            } catch (Exception ignored) {}
+            currentShiftDialog = null;
+        }
+        super.onDestroyView();
     }
 }

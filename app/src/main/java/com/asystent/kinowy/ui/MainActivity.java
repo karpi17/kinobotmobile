@@ -51,12 +51,12 @@ public class MainActivity extends AppCompatActivity
 
     private MainViewModel viewModel;
 
-    // ─── Fragmenty (trzymamy referencje — nie re-tworzymy przy każdym tapie) ───
-    private final DashboardFragment dashboardFragment = new DashboardFragment();
-    private final ScheduleFragment  scheduleFragment  = new ScheduleFragment();
-    private final FinanceFragment   financeFragment   = new FinanceFragment();
-    private final ProfileFragment   profileFragment   = new ProfileFragment();
-    private final StatisticsFragment statisticsFragment = new StatisticsFragment();
+    // ─── Fragmenty (zarządzane zgodnie z cyklem życia Androida) ───────────────
+    private DashboardFragment dashboardFragment;
+    private ScheduleFragment  scheduleFragment;
+    private FinanceFragment   financeFragment;
+    private ProfileFragment   profileFragment;
+    private StatisticsFragment statisticsFragment;
     private Fragment activeFragment;
     private static final String KEY_SELECTED_NAV_ID = "selected_nav_id";
     private int selectedNavId = R.id.nav_dashboard;
@@ -75,7 +75,6 @@ public class MainActivity extends AppCompatActivity
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         if (savedInstanceState != null) {
-            savedInstanceState.remove("android:support:fragments");
             selectedNavId = savedInstanceState.getInt(KEY_SELECTED_NAV_ID, R.id.nav_dashboard);
         }
         super.onCreate(savedInstanceState);
@@ -102,22 +101,42 @@ public class MainActivity extends AppCompatActivity
         navigationView.setNavigationItemSelectedListener(this);
 
         // ─── Easter Egg — klik w TYTUŁ toolbara (TextView w środku) ────────────
-        // MaterialToolbar nie eksponuje tytułu jako osobnego View, więc szukamy
-        // pierwszego TextView wewnątrz toolbara (jest nim tytuł).
         setupEasterEgg(toolbar);
 
-        // ─── Dodanie fragmentów i odtworzenie wybranej zakładki ─────────────────
-        activeFragment = getFragmentForNavId(selectedNavId);
-        androidx.fragment.app.FragmentTransaction tx = getSupportFragmentManager().beginTransaction();
-        Fragment[] allFragments = {profileFragment, financeFragment, scheduleFragment, statisticsFragment, dashboardFragment};
-        String[] allTags = {"profile", "finance", "schedule", "statistics", "dashboard"};
-        for (int i = 0; i < allFragments.length; i++) {
-            tx.add(R.id.fragment_container, allFragments[i], allTags[i]);
-            if (allFragments[i] != activeFragment) {
-                tx.hide(allFragments[i]);
+        // ─── Zarządzanie fragmentami (odporne na restart procesu / powrót po czasie) ───
+        if (savedInstanceState == null) {
+            dashboardFragment = new DashboardFragment();
+            scheduleFragment = new ScheduleFragment();
+            financeFragment = new FinanceFragment();
+            profileFragment = new ProfileFragment();
+            statisticsFragment = new StatisticsFragment();
+
+            activeFragment = getFragmentForNavId(selectedNavId);
+            androidx.fragment.app.FragmentTransaction tx = getSupportFragmentManager().beginTransaction();
+            Fragment[] allFragments = {profileFragment, financeFragment, scheduleFragment, statisticsFragment, dashboardFragment};
+            String[] allTags = {"profile", "finance", "schedule", "statistics", "dashboard"};
+            for (int i = 0; i < allFragments.length; i++) {
+                tx.add(R.id.fragment_container, allFragments[i], allTags[i]);
+                if (allFragments[i] != activeFragment) {
+                    tx.hide(allFragments[i]);
+                }
             }
+            tx.commit();
+        } else {
+            dashboardFragment = (DashboardFragment) getSupportFragmentManager().findFragmentByTag("dashboard");
+            scheduleFragment = (ScheduleFragment) getSupportFragmentManager().findFragmentByTag("schedule");
+            financeFragment = (FinanceFragment) getSupportFragmentManager().findFragmentByTag("finance");
+            profileFragment = (ProfileFragment) getSupportFragmentManager().findFragmentByTag("profile");
+            statisticsFragment = (StatisticsFragment) getSupportFragmentManager().findFragmentByTag("statistics");
+
+            if (dashboardFragment == null) dashboardFragment = new DashboardFragment();
+            if (scheduleFragment == null) scheduleFragment = new ScheduleFragment();
+            if (financeFragment == null) financeFragment = new FinanceFragment();
+            if (profileFragment == null) profileFragment = new ProfileFragment();
+            if (statisticsFragment == null) statisticsFragment = new StatisticsFragment();
+
+            activeFragment = getFragmentForNavId(selectedNavId);
         }
-        tx.commit();
         navigationView.setCheckedItem(selectedNavId);
 
         // ─── Alarms — obserwuj zmiany i przelicz alarmy ─────────────────────────
@@ -137,18 +156,22 @@ public class MainActivity extends AppCompatActivity
         }
 
         // ─── Deep-link przy zimnym starcie (widget kliknięty gdy apka była zamknięta) ──
-        // P1 fix: obsługa nie tylko w onNewIntent (singleTop), ale też w onCreate
-        String coldStartDate = getIntent().getStringExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
-        int coldStartId = getIntent().getIntExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_ID, -1);
+        final String coldStartDate = getIntent().getStringExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
+        final int coldStartId = getIntent().getIntExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_ID, -1);
         if (coldStartDate != null && !coldStartDate.isEmpty()) {
-            // Czekamy aż ViewModell załaduje dane z Room, potem otwieramy dialog
-            viewModel.getAllShifts().observe(this, shifts -> {
+            getIntent().removeExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
+            getIntent().removeExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_ID);
+
+            // Obserwator jednorazowy — po otwarciu zmiany natychmiast się wyrejestrowuje,
+            // zapobiegając ponownemu wywoływaniu i crashom przy kolejnych edycjach zmian.
+            final androidx.lifecycle.Observer<List<Shift>>[] oneTimeObserver = new androidx.lifecycle.Observer[1];
+            oneTimeObserver[0] = shifts -> {
                 if (shifts != null && !shifts.isEmpty()) {
+                    viewModel.getAllShifts().removeObserver(oneTimeObserver[0]);
                     openShiftByIdOrDate(coldStartId, coldStartDate);
-                    // Obsłużyliśmy raz — wyczyść Intent żeby nie otwieral się po rotacji
-                    getIntent().removeExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
                 }
-            });
+            };
+            viewModel.getAllShifts().observe(this, oneTimeObserver[0]);
         }
     }
 
@@ -201,7 +224,12 @@ public class MainActivity extends AppCompatActivity
         if (activeFragment != null && activeFragment != fragment) {
             tx.hide(activeFragment);
         }
-        tx.show(fragment).commit();
+        if (!fragment.isAdded()) {
+            tx.add(R.id.fragment_container, fragment);
+        } else {
+            tx.show(fragment);
+        }
+        tx.commitAllowingStateLoss();
         activeFragment = fragment;
     }
 
@@ -302,6 +330,8 @@ public class MainActivity extends AppCompatActivity
         String shiftDate = intent.getStringExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
         int shiftId = intent.getIntExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_ID, -1);
         if (shiftDate != null && !shiftDate.isEmpty()) {
+            intent.removeExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_DATE);
+            intent.removeExtra(ShiftWidgetProvider.EXTRA_OPEN_SHIFT_ID);
             openShiftByIdOrDate(shiftId, shiftDate);
         }
     }
@@ -311,12 +341,16 @@ public class MainActivity extends AppCompatActivity
      * z fallbackiem na pierwsze dopasowanie po dacie.
      */
     private void openShiftByIdOrDate(int shiftId, String date) {
+        if (isFinishing() || isDestroyed()) return;
+
         // Przełącz na Grafik przez drawer
         selectedNavId = R.id.nav_schedule;
         showFragment(scheduleFragment);
         navigationView.setCheckedItem(R.id.nav_schedule);
 
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (scheduleFragment == null || !scheduleFragment.isAdded() || scheduleFragment.getContext() == null) return;
             List<Shift> shifts = viewModel.getAllShifts().getValue();
             if (shifts == null) return;
 
