@@ -7,7 +7,7 @@
 ![Version](https://img.shields.io/badge/version-v3.5-blue)
 ![Min SDK](https://img.shields.io/badge/minSdk-26-blue)
 ![Target SDK](https://img.shields.io/badge/targetSdk-35-blue)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 ![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen)
 ![Tests](https://img.shields.io/badge/tests-50%2B%20passing-brightgreen)
 
@@ -124,6 +124,10 @@ Wszystkie krytyczne reguły domenowe są objęte automatycznymi testami:
 - `ExcelParserIntegrationTest` & `NewFormatExcelParserTest` — parsowanie zawiłych formatów Excela.
 - `RoomDatabaseTest` — operacje DAO i spójność bazy.
 
+### 📄 Licencja
+
+Projekt udostępniany na licencji MIT — pełny tekst licencji znajduje się w pliku [LICENSE](./LICENSE).
+
 ---
 
 ## 🇬🇧 About the Project
@@ -152,11 +156,11 @@ Built from the ground up as a native Android application following the MVVM arch
 ### ⚙️ Local Setup
 
 ```bash
-git clone https://github.com/Karpi05/KinoBot.git
-cd KinoBot
+git clone https://github.com/karpi17/kinobotmobile.git
+cd kinobotmobile
 ./gradlew testDebugUnitTest assembleDebug
 ```
 
 ### 📄 License
 
-MIT — see [LICENSE](LICENSE) file.
+Distributed under the MIT License. See [LICENSE](./LICENSE) for details.
