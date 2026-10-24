@@ -189,12 +189,13 @@ public class NewFormatExcelParser implements ScheduleParser {
                 ParsedShiftInfo info = parseShiftText(rawText);
 
                 if (info.isShift) {
+                    String effCategory = determineEffectiveCategory(emp.position, info.category, info.isClosingShift);
                     GlobalShift gs = new GlobalShift(
                             emp.name,
                             dateStr,
                             info.startTime,
                             info.endTime,
-                            info.category
+                            effCategory
                     );
                     gs.setManuallyEdited(false);
                     allGlobalShifts.add(gs);
@@ -211,7 +212,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                                 info.description != null ? info.description : "",
                                 true,
                                 false,
-                                info.category
+                                effCategory
                         );
                         empShift.setClosingShift(info.isClosingShift);
                         empShift.setClosingCrew("");
@@ -243,6 +244,7 @@ public class NewFormatExcelParser implements ScheduleParser {
             ParsedShiftInfo info = parseShiftText(rawText);
 
             if (info.isShift) {
+                String userCat = determineEffectiveCategory(targetUserCol.position, info.category, info.isClosingShift);
                 Shift userShift = new Shift(
                         dateStr,
                         info.startTime,
@@ -250,7 +252,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                         info.description != null ? info.description : "",
                         true,
                         false,
-                        info.category
+                        userCat
                 );
                 userShift.setClosingShift(info.isClosingShift);
 
@@ -282,6 +284,14 @@ public class NewFormatExcelParser implements ScheduleParser {
 
         workbook.close();
 
+        String latestDate = allDates.isEmpty() ? null : allDates.get(allDates.size() - 1);
+        List<com.asystent.kinowy.models.ActiveEmployee> detectedEmployees = new ArrayList<>();
+        for (EmployeeHeader emp : employees) {
+            boolean isLeader = isLeadershipPosition(emp.position);
+            String empRole = isLeader ? com.asystent.kinowy.models.ActiveEmployee.ROLE_TL : com.asystent.kinowy.models.ActiveEmployee.ROLE_EMPLOYEE;
+            detectedEmployees.add(new com.asystent.kinowy.models.ActiveEmployee(emp.name, true, empRole, latestDate));
+        }
+
         ScheduleParseResult result = new ScheduleParseResult(
                 scheduleByName,
                 allDates,
@@ -292,6 +302,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                 "Nowy Grafik Excel (XLS/XLSX)"
         );
         result.setTargetUserShifts(targetUserShifts);
+        result.setDetectedEmployees(detectedEmployees);
 
         Log.d(TAG, "============ PODSUMOWANIE PARSOWANIA EXCEL ============");
         Log.d(TAG, "Wykryte osoby (" + employees.size() + "): " + foundNames.toString());
@@ -304,6 +315,25 @@ public class NewFormatExcelParser implements ScheduleParser {
         Log.d(TAG, "=======================================================");
 
         return result;
+    }
+
+    public static boolean isLeadershipPosition(String position) {
+        if (position == null) return false;
+        String p = position.trim().toLowerCase(Locale.ROOT);
+        return p.contains("leader") || p.contains("manager") || p.contains("kierownik") || p.equals("tl");
+    }
+
+    private String determineEffectiveCategory(String position, String parsedCategory, boolean isClosing) {
+        if (isLeadershipPosition(position)) {
+            return isClosing ? "TL (ZAMEK)" : "TL";
+        }
+        if (position != null && !position.trim().isEmpty()) {
+            String pLower = position.trim().toLowerCase(Locale.ROOT);
+            if (pLower.contains("bar")) return isClosing ? "BAR (ZAMEK)" : "BAR";
+            if (pLower.contains("kasa")) return "KASA";
+            if (pLower.contains("tms") || pLower.contains("projekcj")) return "INNE (TMS)";
+        }
+        return parsedCategory != null ? parsedCategory : "OBSŁUGA";
     }
 
     /**

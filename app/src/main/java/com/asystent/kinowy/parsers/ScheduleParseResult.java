@@ -20,6 +20,7 @@ public class ScheduleParseResult {
     private final float confidence;
     private final String sourceDescription;
     private List<Shift> targetUserShifts;
+    private List<com.asystent.kinowy.models.ActiveEmployee> detectedEmployees = new ArrayList<>();
 
     /**
      * Tryb importu wybrany przez użytkownika w BottomSheet konfiguracji.
@@ -55,6 +56,11 @@ public class ScheduleParseResult {
     public List<Shift> getTargetUserShifts() { return targetUserShifts; }
     public void setTargetUserShifts(List<Shift> targetUserShifts) {
         this.targetUserShifts = targetUserShifts != null ? targetUserShifts : new ArrayList<>();
+    }
+
+    public List<com.asystent.kinowy.models.ActiveEmployee> getDetectedEmployees() { return detectedEmployees; }
+    public void setDetectedEmployees(List<com.asystent.kinowy.models.ActiveEmployee> detectedEmployees) {
+        this.detectedEmployees = detectedEmployees != null ? detectedEmployees : new ArrayList<>();
     }
 
     public int getClearMode() { return clearMode; }

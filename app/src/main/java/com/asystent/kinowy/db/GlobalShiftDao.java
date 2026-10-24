@@ -140,6 +140,15 @@ public interface GlobalShiftDao {
     @Query("SELECT DISTINCT name FROM global_shifts WHERE is_deleted = 0 ORDER BY name ASC")
     LiveData<List<String>> getActiveEmployeeNames();
 
+    @Query("SELECT DISTINCT name FROM global_shifts WHERE is_deleted = 0 AND date >= :sinceDate ORDER BY name ASC")
+    LiveData<List<String>> getActiveEmployeeNamesSince(String sinceDate);
+
+    @Query("SELECT MAX(date) FROM global_shifts WHERE name = :name AND is_deleted = 0")
+    String getLatestShiftDateForEmployee(String name);
+
+    @Query("SELECT DISTINCT category FROM global_shifts WHERE name = :name AND is_deleted = 0")
+    List<String> getCategoriesForEmployee(String name);
+
     /**
      * Sprawdza, czy istnieje ręcznie edytowany rekord o tych samych danych.
      * Używane w {@link #insertAllSafe(List)} do ochrony manualnych zmian.

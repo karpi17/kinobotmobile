@@ -30,8 +30,8 @@ android {
         applicationId "com.asystent.kinowy"
         minSdk 26
         targetSdk 34
-        versionCode 35
-        versionName "3.5"
+        versionCode 36
+        versionName "3.5.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

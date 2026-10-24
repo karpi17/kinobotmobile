@@ -155,6 +155,12 @@ public class ProfileFragment extends Fragment {
         // Przycisk dodania nowej stawki
         view.findViewById(R.id.btn_add_rate).setOnClickListener(v -> showAddRateDialog());
 
+        // ── Zarządzanie Kadrą (Role i aktywność) ──────────────────────────────
+        View btnManageStaff = view.findViewById(R.id.btn_manage_staff);
+        if (btnManageStaff != null) {
+            btnManageStaff.setOnClickListener(v -> StaffManagementDialog.show(requireContext(), getViewLifecycleOwner(), viewModel));
+        }
+
         // ── Kopie zapasowe (JSON) ─────────────────────────────────────────────
         view.findViewById(R.id.btn_export_backup).setOnClickListener(v -> {
             String defaultFileName = "kinobot_backup_" + new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()) + ".json";

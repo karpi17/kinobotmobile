@@ -147,7 +147,7 @@ public class MainViewModel extends AndroidViewModel {
         syncStatus = new MutableLiveData<>();
         unknownShifts = new MediatorLiveData<>();
         missingReportAlert = new MutableLiveData<>();
-        closingCrewSuggestions = globalShiftDao.getActiveEmployeeNames();
+        closingCrewSuggestions = employeeDao.getAllActiveEmployeeNames();
         nextShiftCoworkers = new MediatorLiveData<>();
         bhpAlerts = new MediatorLiveData<>();
         yearlyStats = new MutableLiveData<>();
@@ -176,6 +176,82 @@ public class MainViewModel extends AndroidViewModel {
                     rateHistoryDao.insert(seed);
                     Log.d(TAG, "✅ Seed stawki: " + savedRate + " PLN/h od 2020-01-01");
                 }
+            }
+        });
+
+        // Synchronizacja słownika active_employees z global_shifts (odświeżenie dat, ról i aktywności)
+        executor.execute(() -> {
+            try {
+                List<GlobalShift> allGlobal = globalShiftDao.getAllGlobalShiftsSync();
+                if (allGlobal != null && !allGlobal.isEmpty()) {
+                    java.util.Map<String, String> latestDatePerEmp = new java.util.HashMap<>();
+                    java.util.Map<String, String> originalNameMap = new java.util.HashMap<>();
+                    java.util.Set<String> tlEmployees = new java.util.HashSet<>();
+                    String maxGlobalDate = "2000-01-01";
+
+                    for (GlobalShift gs : allGlobal) {
+                        if (gs.getName() == null || gs.getName().trim().isEmpty() || gs.isDeleted()) continue;
+                        String name = gs.getName().trim();
+                        String key = name.toLowerCase(java.util.Locale.ROOT);
+                        originalNameMap.put(key, name);
+
+                        String date = gs.getDate();
+                        if (date != null) {
+                            if (date.compareTo(maxGlobalDate) > 0) maxGlobalDate = date;
+                            String prev = latestDatePerEmp.get(key);
+                            if (prev == null || date.compareTo(prev) > 0) {
+                                latestDatePerEmp.put(key, date);
+                            }
+                        }
+                        if (com.asystent.kinowy.utils.ReplacementFinder.isLeadershipCategory(gs.getCategory())) {
+                            tlEmployees.add(key);
+                        }
+                    }
+
+                    String activeCutoff = "2000-01-01";
+                    try {
+                        java.time.LocalDate maxDate = java.time.LocalDate.parse(maxGlobalDate);
+                        activeCutoff = maxDate.minusDays(45).toString();
+                    } catch (Exception ignored) {}
+
+                    List<ActiveEmployee> currentDbEmployees = employeeDao.getAllEmployeesSync();
+                    java.util.Map<String, ActiveEmployee> existingMap = new java.util.HashMap<>();
+                    if (currentDbEmployees != null) {
+                        for (ActiveEmployee ae : currentDbEmployees) {
+                            existingMap.put(ae.getName().toLowerCase(java.util.Locale.ROOT), ae);
+                        }
+                    }
+
+                    for (java.util.Map.Entry<String, String> entry : latestDatePerEmp.entrySet()) {
+                        String key = entry.getKey();
+                        String properName = originalNameMap.get(key);
+                        String lastDate = entry.getValue();
+                        boolean isRecent = lastDate.compareTo(activeCutoff) >= 0;
+                        boolean isTL = tlEmployees.contains(key);
+
+                        ActiveEmployee ae = existingMap.get(key);
+                        if (ae == null) {
+                            ae = new ActiveEmployee(properName, isRecent,
+                                    isTL ? ActiveEmployee.ROLE_TL : ActiveEmployee.ROLE_EMPLOYEE, lastDate);
+                            employeeDao.upsert(ae);
+                        } else {
+                            boolean changed = false;
+                            if (ae.getLastSeenDate() == null || ae.getLastSeenDate().compareTo(lastDate) < 0) {
+                                ae.setLastSeenDate(lastDate);
+                                changed = true;
+                            }
+                            if (isTL && !ae.isLeadership()) {
+                                ae.setRole(ActiveEmployee.ROLE_TL);
+                                changed = true;
+                            }
+                            if (changed) {
+                                employeeDao.update(ae);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Błąd podczas synchronizacji pracowników: " + e.getMessage());
             }
         });
 
@@ -1145,10 +1221,28 @@ public class MainViewModel extends AndroidViewModel {
                 }
 
                 // 2. Słownik pracowników
-                List<String> names = parseResult.getFoundNames();
-                if (names != null) {
-                    for (String name : names) {
-                        employeeDao.insertOrIgnore(new ActiveEmployee(name));
+                if (parseResult.getDetectedEmployees() != null && !parseResult.getDetectedEmployees().isEmpty()) {
+                    for (ActiveEmployee emp : parseResult.getDetectedEmployees()) {
+                        ActiveEmployee existing = employeeDao.getEmployeeByName(emp.getName());
+                        if (existing != null) {
+                            existing.setActive(true);
+                            if (emp.getLastSeenDate() != null) {
+                                existing.setLastSeenDate(emp.getLastSeenDate());
+                            }
+                            if (emp.isLeadership()) {
+                                existing.setRole(emp.getRole());
+                            }
+                            employeeDao.update(existing);
+                        } else {
+                            employeeDao.upsert(emp);
+                        }
+                    }
+                } else {
+                    List<String> names = parseResult.getFoundNames();
+                    if (names != null) {
+                        for (String name : names) {
+                            employeeDao.insertOrIgnore(new ActiveEmployee(name));
+                        }
                     }
                 }
 
@@ -1347,7 +1441,19 @@ public class MainViewModel extends AndroidViewModel {
                                             if (autoResult != null && autoResult.getAllGlobalShifts() != null
                                                     && !autoResult.getAllGlobalShifts().isEmpty()) {
                                                 globalShiftDao.insertAllSafe(autoResult.getAllGlobalShifts());
-                                                if (autoResult.getFoundNames() != null) {
+                                                if (autoResult.getDetectedEmployees() != null && !autoResult.getDetectedEmployees().isEmpty()) {
+                                                    for (ActiveEmployee emp : autoResult.getDetectedEmployees()) {
+                                                        ActiveEmployee existing = employeeDao.getEmployeeByName(emp.getName());
+                                                        if (existing != null) {
+                                                            existing.setActive(true);
+                                                            if (emp.getLastSeenDate() != null) existing.setLastSeenDate(emp.getLastSeenDate());
+                                                            if (emp.isLeadership()) existing.setRole(emp.getRole());
+                                                            employeeDao.update(existing);
+                                                        } else {
+                                                            employeeDao.upsert(emp);
+                                                        }
+                                                    }
+                                                } else if (autoResult.getFoundNames() != null) {
                                                     for (String name : autoResult.getFoundNames()) {
                                                         employeeDao.insertOrIgnore(new ActiveEmployee(name));
                                                     }
@@ -1593,6 +1699,77 @@ public class MainViewModel extends AndroidViewModel {
             Log.w(TAG, "Błąd sprawdzania duplikatu kalendarza — wstawiam na wszelki wypadek", e);
             return false; // bezpieczniejsze niż pominięcie
         }
+    }
+
+    // ─── Zarządzanie Kadrą (Role i Aktywność) ────────────────────────────
+
+    public LiveData<List<ActiveEmployee>> getAllEmployeesLive() {
+        return employeeDao.getAllEmployeesLive();
+    }
+
+    public List<ActiveEmployee> getAllEmployeesSync() {
+        return employeeDao.getAllEmployeesSync();
+    }
+
+    public List<ActiveEmployee> getAllActiveEmployeesSync() {
+        return employeeDao.getAllActiveEmployeesSync();
+    }
+
+    public void updateEmployeeActiveStatus(String name, boolean isActive) {
+        executor.execute(() -> employeeDao.setActiveStatus(name, isActive));
+    }
+
+    public void updateEmployeeRole(String name, String role) {
+        executor.execute(() -> employeeDao.setRole(name, role));
+    }
+
+    public void deleteEmployee(String name) {
+        executor.execute(() -> employeeDao.deleteByName(name));
+    }
+
+    public void upsertEmployee(ActiveEmployee employee) {
+        executor.execute(() -> employeeDao.upsert(employee));
+    }
+
+    public void cleanupInactiveEmployees(int daysThreshold) {
+        executor.execute(() -> {
+            try {
+                List<GlobalShift> allGlobal = globalShiftDao.getAllGlobalShiftsSync();
+                if (allGlobal == null || allGlobal.isEmpty()) return;
+
+                String maxDateStr = "2000-01-01";
+                java.util.Map<String, String> latestDatePerEmp = new java.util.HashMap<>();
+                for (GlobalShift gs : allGlobal) {
+                    if (gs.getName() == null || gs.getName().trim().isEmpty() || gs.isDeleted()) continue;
+                    String name = gs.getName().trim();
+                    String key = name.toLowerCase(java.util.Locale.ROOT);
+                    String d = gs.getDate();
+                    if (d != null) {
+                        if (d.compareTo(maxDateStr) > 0) maxDateStr = d;
+                        String prev = latestDatePerEmp.get(key);
+                        if (prev == null || d.compareTo(prev) > 0) {
+                            latestDatePerEmp.put(key, d);
+                        }
+                    }
+                }
+
+                java.time.LocalDate maxDate = java.time.LocalDate.parse(maxDateStr);
+                String cutoffDate = maxDate.minusDays(daysThreshold).toString();
+
+                List<ActiveEmployee> allEmployees = employeeDao.getAllEmployeesSync();
+                if (allEmployees != null) {
+                    for (ActiveEmployee ae : allEmployees) {
+                        String key = ae.getName().toLowerCase(java.util.Locale.ROOT);
+                        String lastDate = latestDatePerEmp.get(key);
+                        if (lastDate == null || lastDate.compareTo(cutoffDate) < 0) {
+                            employeeDao.setActiveStatus(ae.getName(), false);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Błąd podczas cleanupInactiveEmployees: " + e.getMessage());
+            }
+        });
     }
 
     // ─── Cykl życia ViewModel ─────────────────────────────────────────────

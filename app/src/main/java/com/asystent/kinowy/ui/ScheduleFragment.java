@@ -211,22 +211,32 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
 
         Executors.newSingleThreadExecutor().execute(() -> {
             List<GlobalShift> allGlobal = viewModel.getAllGlobalShiftsSync();
+            List<com.asystent.kinowy.models.ActiveEmployee> activeEmployees = viewModel.getAllActiveEmployeesSync();
             String myName = ctx.getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE)
                     .getString("user_name", "");
             List<com.asystent.kinowy.utils.ReplacementFinder.Candidate> candidates =
                     com.asystent.kinowy.utils.ReplacementFinder.findCandidates(
-                            dateStr, startStr, endStr, myName, suggestionsSnapshot, allGlobal);
+                            dateStr, startStr, endStr, category, myName, activeEmployees, allGlobal);
             String messengerText = com.asystent.kinowy.utils.ReplacementFinder.buildMessengerMessage(
                     dateStr, startStr, endStr, category);
 
             if (!isAdded() || getActivity() == null) return;
             getActivity().runOnUiThread(() -> {
                 if (!isAdded()) return;
+                boolean isLeadership = com.asystent.kinowy.utils.ReplacementFinder.isLeadershipCategory(category);
                 StringBuilder sb = new StringBuilder();
                 if (candidates.isEmpty()) {
-                    sb.append("Brak dostępnych kandydatów w bazie (wszyscy pracują lub mieliby naruszenie 11h odpoczynku BHP).\n\n");
+                    if (isLeadership) {
+                        sb.append("Brak dostępnych Team Leaderów / Kierowników w bazie (wszyscy pracują lub mieliby naruszenie 11h odpoczynku BHP).\n\n");
+                    } else {
+                        sb.append("Brak dostępnych pracowników w bazie (wszyscy pracują lub mieliby naruszenie 11h odpoczynku BHP).\n\n");
+                    }
                 } else {
-                    sb.append("Osoby mające wolne i bezpieczną przerwę BHP (≥11h):\n\n");
+                    if (isLeadership) {
+                        sb.append("Dostępni Team Leaderzy / Kierownicy (wolne + bezpieczna przerwa ≥11h BHP):\n\n");
+                    } else {
+                        sb.append("Osoby mające wolne i bezpieczną przerwę BHP (≥11h):\n\n");
+                    }
                     for (com.asystent.kinowy.utils.ReplacementFinder.Candidate c : candidates) {
                         sb.append("✅ ").append(c.getName())
                           .append(" — ").append(c.getNote()).append("\n");
@@ -237,7 +247,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                 sb.append("Gotowa wiadomość na Messenger:\n").append(messengerText);
 
                 new AlertDialog.Builder(requireContext())
-                        .setTitle("🔍 Kto może wziąć zmianę? (" + dateStr + ")")
+                        .setTitle((isLeadership ? "⭐ Zastępstwo TL (" : "🔍 Kto może wziąć zmianę? (") + dateStr + ")")
                         .setMessage(sb.toString().trim())
                         .setPositiveButton("📋 Kopiuj wiadomość", (d, w) -> {
                             android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
@@ -586,7 +596,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         TextInputEditText etEnd = dialogView.findViewById(R.id.et_shift_end);
         android.widget.AutoCompleteTextView etCategory = dialogView.findViewById(R.id.et_shift_category);
         
-        String[] defaultCategories = new String[]{"BAR", "OW", "SP", "ZAMEK", "OBSŁUGA"};
+        String[] defaultCategories = new String[]{"TL", "KIEROWNIK", "BAR", "OW", "SP", "ZAMEK", "OBSŁUGA", "MANAGER"};
         android.widget.ArrayAdapter<String> categoryAdapter = new android.widget.ArrayAdapter<>(
                 requireContext(),
                 android.R.layout.simple_dropdown_item_1line,

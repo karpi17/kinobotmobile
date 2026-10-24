@@ -1,5 +1,6 @@
 package com.asystent.kinowy.utils;
 
+import com.asystent.kinowy.models.ActiveEmployee;
 import com.asystent.kinowy.models.GlobalShift;
 
 import org.junit.Test;
@@ -38,11 +39,63 @@ public class ReplacementFinderTest {
     }
 
     @Test
+    public void findCandidates_whenLeadershipShift_onlySuggestsLeaders() {
+        // Kacper szuka zastępstwa na zmianę Team Leader (TL)
+        List<ActiveEmployee> employees = Arrays.asList(
+                new ActiveEmployee("Kacper W.", true, ActiveEmployee.ROLE_TL, "2026-10-20"),
+                new ActiveEmployee("Anna K.", true, ActiveEmployee.ROLE_EMPLOYEE, "2026-10-20"), // zwykły pracownik -> odpada!
+                new ActiveEmployee("Marek T.", true, ActiveEmployee.ROLE_TL, "2026-10-20"),       // TL z wolnym -> pasuje!
+                new ActiveEmployee("Zuzanna R.", true, ActiveEmployee.ROLE_MANAGER, "2026-10-20") // Kierownik -> pasuje!
+        );
+
+        List<GlobalShift> globalShifts = Arrays.asList(
+                new GlobalShift("Kacper W.", "2026-10-25", "17:00", "01:00", "TL"),
+                new GlobalShift("Anna K.", "2026-10-24", "12:00", "20:00", "BAR"),
+                new GlobalShift("Marek T.", "2026-10-24", "09:00", "17:00", "TL"),
+                new GlobalShift("Zuzanna R.", "2026-10-24", "09:00", "17:00", "TL")
+        );
+
+        List<ReplacementFinder.Candidate> candidates = ReplacementFinder.findCandidates(
+                "2026-10-25", "17:00", "01:00", "TL", "Kacper W.", employees, globalShifts);
+
+        assertEquals(2, candidates.size());
+        assertTrue(candidates.stream().anyMatch(c -> "Marek T.".equals(c.getName())));
+        assertTrue(candidates.stream().anyMatch(c -> "Zuzanna R.".equals(c.getName())));
+        assertFalse(candidates.stream().anyMatch(c -> "Anna K.".equals(c.getName())));
+    }
+
+    @Test
+    public void findCandidates_excludesInactiveEmployees() {
+        List<ActiveEmployee> employees = Arrays.asList(
+                new ActiveEmployee("Kacper W.", true, ActiveEmployee.ROLE_EMPLOYEE, "2026-10-20"),
+                new ActiveEmployee("Jan Były", false, ActiveEmployee.ROLE_EMPLOYEE, "2026-05-10"), // oznaczony jako były -> odpada!
+                new ActiveEmployee("Piotr Aktywny", true, ActiveEmployee.ROLE_EMPLOYEE, "2026-10-20")
+        );
+
+        List<GlobalShift> globalShifts = Arrays.asList(
+                new GlobalShift("Piotr Aktywny", "2026-10-20", "09:00", "17:00", "BAR")
+        );
+
+        List<ReplacementFinder.Candidate> candidates = ReplacementFinder.findCandidates(
+                "2026-10-25", "12:00", "20:00", "BAR", "Kacper W.", employees, globalShifts);
+
+        assertEquals(1, candidates.size());
+        assertEquals("Piotr Aktywny", candidates.get(0).getName());
+    }
+
+    @Test
     public void buildMessengerMessage_formatsCleanly() {
         String msg = ReplacementFinder.buildMessengerMessage("2026-08-10", "17:00", "01:00", "ZAMEK");
         assertTrue(msg.contains("17:00–01:00"));
         assertTrue(msg.contains("[ZAMEK]"));
         assertFalse(msg.isEmpty());
+    }
+
+    @Test
+    public void buildMessengerMessage_forLeadershipShift_tailoredText() {
+        String msg = ReplacementFinder.buildMessengerMessage("2026-10-25", "17:00", "01:00", "TL");
+        assertTrue(msg.contains("Team Leader / Kierowniczą"));
+        assertTrue(msg.contains("Czy któryś z Team Leaderów / Kierowników mógłby mnie zastąpić?"));
     }
 
     @Test

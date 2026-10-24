@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="6dp"
+    android:background="?android:attr/selectableItemBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- Imię i data ostatniej zmiany -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_staff_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Kacper W."
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tv_staff_last_seen"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ostatnio w grafiku: 2026-10-22"
+                android:textSize="11sp"
+                android:textColor="#888888" />
+        </LinearLayout>
+
+        <!-- Przycisk usuń ze słownika -->
+        <ImageButton
+            android:id="@+id/btn_staff_delete"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_delete"
+            android:contentDescription="Usuń pracownika"
+            app:tint="#FF5252"
+            android:padding="6dp" />
+
+    </LinearLayout>
+
+    <!-- Pasek akcji i tagów: Status + Rola -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="4dp"
+        android:gravity="center_vertical">
+
+        <!-- Chip Status: Aktywny / Były pracownik -->
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip_staff_status"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="✅ Aktywny"
+            android:textSize="11sp"
+            android:textColor="#A5D6A7"
+            app:chipBackgroundColor="#1B5E20"
+            app:chipCornerRadius="8dp"
+            android:checkable="false"
+            android:clickable="true"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Chip Rola: TL / Pracownik -->
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chip_staff_role"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="⭐ Team Leader"
+            android:textSize="11sp"
+            android:textColor="#E1BEE7"
+            app:chipBackgroundColor="#4A148C"
+            app:chipCornerRadius="8dp"
+            android:checkable="false"
+            android:clickable="true" />
+
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#222222"
+        android:layout_marginTop="6dp" />
+
+</LinearLayout>

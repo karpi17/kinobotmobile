@@ -32,10 +32,11 @@ import com.asystent.kinowy.models.ScheduleImportLog;
  *  v12 → v13: dodano tabelę `import_log` (historia importów grafików)
  *  v13 → v14: dodano tabelę `rate_history` (historia stawek godzinowych)
  *  v14 → v15: dodano unikalny indeks na rate_history.active_from (jedna stawka na dzień)
+ *  v15 → v16: dodano kolumny is_active, role i last_seen_date do active_employees
  */
 @Database(
     entities = {Shift.class, Loss.class, Tip.class, MonthlyReport.class, ActiveEmployee.class, GlobalShift.class, ScheduleImportLog.class, RateHistory.class},
-    version = 15,
+    version = 16,
     exportSchema = true
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -339,6 +340,27 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    /**
+     * v15 → v16
+     * Dodaje kolumny `is_active`, `role` oraz `last_seen_date` do tabeli active_employees.
+     * Pozwala rozróżniać Team Leaderów / Menadżerów od zwykłych pracowników oraz
+     * ukrywać nieaktywne osoby, które już nie pracują w kinie.
+     */
+    public static final Migration MIGRATION_15_16 = new Migration(15, 16) {
+        @Override
+        public void migrate(@androidx.annotation.NonNull SupportSQLiteDatabase database) {
+            database.execSQL(
+                "ALTER TABLE `active_employees` ADD COLUMN `is_active` INTEGER NOT NULL DEFAULT 1"
+            );
+            database.execSQL(
+                "ALTER TABLE `active_employees` ADD COLUMN `role` TEXT NOT NULL DEFAULT 'EMPLOYEE'"
+            );
+            database.execSQL(
+                "ALTER TABLE `active_employees` ADD COLUMN `last_seen_date` TEXT"
+            );
+        }
+    };
+
     // -------------------------------------------------------------------------
     // Singleton
     // -------------------------------------------------------------------------
@@ -364,7 +386,8 @@ public abstract class AppDatabase extends RoomDatabase {
                         MIGRATION_11_12, // v11 → v12 (alarm budzik)
                         MIGRATION_12_13, // v12 → v13 (historia importu)
                         MIGRATION_13_14, // v13 → v14 (historia stawek)
-                        MIGRATION_14_15  // v14 → v15 (unikalny indeks na active_from)
+                        MIGRATION_14_15, // v14 → v15 (unikalny indeks na active_from)
+                        MIGRATION_15_16  // v15 → v16 (aktywność i role pracowników)
                     )
                     // Fallback wyłącznie dla przestarzałych odsłon (v1 i v2) przed uruchomieniem wczesnych archiwizowanych migracji
                     .fallbackToDestructiveMigrationFrom(1, 2)

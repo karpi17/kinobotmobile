@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Wyszukiwarka -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="🔍 Szukaj pracownika..."
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+        android:layout_marginBottom="8dp">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/et_staff_search"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:inputType="textCapWords" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Pasek podsumowania: Aktywni / Wszyscy -->
+    <TextView
+        android:id="@+id/tv_staff_summary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Wszyscy pracownicy: 0 | Aktywni: 0"
+        android:textSize="12sp"
+        android:textColor="#AAAAAA"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Lista pracowników -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_staff_list"
+        android:layout_width="match_parent"
+        android:layout_height="320dp"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:id="@+id/tv_staff_empty"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:gravity="center"
+        android:text="Brak pracowników w bazie"
+        android:textColor="#888888"
+        android:visibility="gone" />
+
+    <!-- Przyciski akcji na dole -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_staff_cleanup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🧹 Ukryj > 60 dni"
+            android:textSize="12sp"
+            android:textAllCaps="false"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_marginEnd="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_staff_add"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+ Dodaj"
+            android:textSize="12sp"
+            android:textAllCaps="false"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+    </LinearLayout>
+
+</LinearLayout>

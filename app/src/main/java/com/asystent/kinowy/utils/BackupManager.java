@@ -204,7 +204,7 @@ public class BackupManager {
 
             // 6. Słownik aktywnych pracowników (active_employees)
             if (!backup.getActiveEmployees().isEmpty()) {
-                db.employeeDao().insertAll(backup.getActiveEmployees());
+                db.employeeDao().upsertAll(backup.getActiveEmployees());
             }
         });
 

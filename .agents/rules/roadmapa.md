@@ -34,6 +34,10 @@ Cel: Domknąć codzienne funkcje użytkownika: ekipa, zastępstwa, budzik, widge
 - [x] Pozwalać edytować dodaną osobę. ✅ (showCoworkerEditDialog)
 - [x] Pozwalać soft-delete osoby. ✅ (deleteGlobalShift w edit dialog)
 - [x] Odświeżać widget po dodaniu/edycji/usunięciu. ✅ (triggerUpdate w insertGlobalShift)
+- [x] **Kwalifikacje i role (v3.5.1):** Rozróżnianie Team Leaderów/Kierowników od pracowników — zmiana TL może być oddana tylko innemu TL-owi. ✅
+- [x] **Filtr aktywności (v3.5.1):** Ukrywanie byłych pracowników w zastępstwach i podpowiedziach AutoComplete + okno czasowe 45 dni. ✅
+- [x] **Zarządzanie kadrą (v3.5.1):** Panel `StaffManagementDialog` w Profilu (przełączanie aktywności, roli TL/pracownik, auto-czyszczenie >60 dni). ✅
+- [x] **Dedykowany Messenger (v3.5.1):** Osobny szablon wiadomości dla zmian Team Leader. ✅
 
 ### Feature B — Inteligentny Budzik
 - [x] Ustabilizować alarm dla zmian z Excela. ✅ (AlarmScheduler + null guard)
