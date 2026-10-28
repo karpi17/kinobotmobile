@@ -220,6 +220,7 @@ public class ImportPreviewFragment extends Fragment {
             final String myName = requireContext()
                     .getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE)
                     .getString("user_name", "Kacper").trim();
+            final List<com.asystent.kinowy.models.GlobalShift> dbDayShifts = new java.util.ArrayList<>();
 
             Runnable updatePreviewCoworkers = () -> {
                 String curStart = (etStart != null && etStart.getText() != null) ? etStart.getText().toString().trim() : shift.getStartTime();
@@ -228,10 +229,25 @@ public class ImportPreviewFragment extends Fragment {
                 boolean fullDayMode = showFullDay[0] || !hasHours;
 
                 List<com.asystent.kinowy.models.GlobalShift> dayAll = new java.util.ArrayList<>();
+                java.util.Set<String> seenKeys = new java.util.HashSet<>();
                 for (com.asystent.kinowy.models.GlobalShift gs : pendingResult.getAllGlobalShifts()) {
                     if (gs != null && shift.getDate().equals(gs.getDate())
                             && !com.asystent.kinowy.utils.ShiftUtils.isSelfShift(gs, myName, curStart, curEnd)) {
-                        dayAll.add(gs);
+                        String key = (gs.getName() != null ? gs.getName().toLowerCase(java.util.Locale.ROOT) : "")
+                                + "|" + gs.getStartTime() + "|" + gs.getEndTime();
+                        if (seenKeys.add(key)) {
+                            dayAll.add(gs);
+                        }
+                    }
+                }
+                for (com.asystent.kinowy.models.GlobalShift gs : dbDayShifts) {
+                    if (gs != null && shift.getDate().equals(gs.getDate())
+                            && !com.asystent.kinowy.utils.ShiftUtils.isSelfShift(gs, myName, curStart, curEnd)) {
+                        String key = (gs.getName() != null ? gs.getName().toLowerCase(java.util.Locale.ROOT) : "")
+                                + "|" + gs.getStartTime() + "|" + gs.getEndTime();
+                        if (seenKeys.add(key)) {
+                            dayAll.add(gs);
+                        }
                     }
                 }
 
@@ -256,6 +272,18 @@ public class ImportPreviewFragment extends Fragment {
                 });
             }
             updatePreviewCoworkers.run();
+            java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+                try {
+                    List<com.asystent.kinowy.models.GlobalShift> existing = viewModel.getGlobalShiftsByDate(shift.getDate());
+                    if (existing != null && !existing.isEmpty() && isAdded()) {
+                        requireActivity().runOnUiThread(() -> {
+                            dbDayShifts.clear();
+                            dbDayShifts.addAll(existing);
+                            updatePreviewCoworkers.run();
+                        });
+                    }
+                } catch (Exception ignored) {}
+            });
         } else if (coworkersSection != null) {
             coworkersSection.setVisibility(View.GONE);
         }

@@ -1232,16 +1232,44 @@ public class MainViewModel extends AndroidViewModel {
                     }
                 }
 
-                // 1. Zapis zmian ekipy
+                // 1. Zapis zmian ekipy (BEZSTRATNE ŁĄCZENIE: usuwamy tylko osoby obecne w wgrywanym pliku,
+                // dzięki czemu wgranie Grafiku Pracowniczego Excel nie kasuje Grafiku Biurowego i odwrotnie)
                 List<GlobalShift> globalShifts = parseResult.getAllGlobalShifts();
                 List<String> importedDates = parseResult.getAllDates();
-                
-                if (clearExisting && importedDates != null) {
-                    for (String d : importedDates) {
-                        globalShiftDao.deleteNonManualGlobalShiftsForDate(d);
+
+                java.util.Set<String> namesInImport = new java.util.HashSet<>();
+                if (parseResult.getFoundNames() != null) {
+                    for (String n : parseResult.getFoundNames()) {
+                        if (n != null && !n.trim().isEmpty()) {
+                            namesInImport.add(n.trim());
+                        }
                     }
                 }
-                
+                if (globalShifts != null) {
+                    for (GlobalShift gs : globalShifts) {
+                        if (gs != null && gs.getName() != null && !gs.getName().trim().isEmpty()) {
+                            namesInImport.add(gs.getName().trim());
+                        }
+                    }
+                }
+
+                if (clearExisting && importedDates != null && !namesInImport.isEmpty()) {
+                    for (String d : importedDates) {
+                        for (String empName : namesInImport) {
+                            globalShiftDao.deleteNonManualGlobalShiftsForDateAndName(d, empName);
+                            // Jeśli importujemy osobę z sufiksem roli (np. "Kasia (Manager)", "Zosia (Deputy)"),
+                            // usuń też ewentualny stary wpis bez sufiksu roli (z wyjątkiem "Kacper", bo jest dwóch Kacprów w biurze)
+                            int parenIdx = empName.indexOf(" (");
+                            if (parenIdx > 0) {
+                                String baseName = empName.substring(0, parenIdx).trim();
+                                if (!baseName.equalsIgnoreCase("Kacper")) {
+                                    globalShiftDao.deleteNonManualGlobalShiftsForDateAndName(d, baseName);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (globalShifts != null && !globalShifts.isEmpty()) {
                     globalShiftDao.insertAllSafe(globalShifts);
                     Log.d(TAG, "Zapisano globalne zmiany (safe): " + globalShifts.size());
@@ -1297,12 +1325,21 @@ public class MainViewModel extends AndroidViewModel {
                     }
                 }
 
-                // 3. Zmiany użytkownika — UPSERT per-date
+                // 3. Zmiany użytkownika — UPSERT per-date (tylko jeśli plik faktycznie zawiera zmiany robocze użytkownika)
                 List<Shift> userShifts = parseResult.getTargetUserShifts();
                 int addedCount = 0;
                 int skippedCount = 0;
+                int workShiftCount = 0;
+                if (userShifts != null) {
+                    for (Shift s : userShifts) {
+                        if (s != null && s.getStartTime() != null && !s.getStartTime().trim().isEmpty()
+                                && s.getEndTime() != null && !s.getEndTime().trim().isEmpty()) {
+                            workShiftCount++;
+                        }
+                    }
+                }
 
-                if (userShifts != null && !userShifts.isEmpty()) {
+                if (userShifts != null && !userShifts.isEmpty() && workShiftCount > 0) {
                     for (Shift incoming : userShifts) {
                         String date = incoming.getDate();
                         if (date == null || date.isEmpty()) continue;
@@ -1322,6 +1359,11 @@ public class MainViewModel extends AndroidViewModel {
                         boolean incomingIsShift = incoming.getStartTime() != null && !incoming.getStartTime().isEmpty()
                                 && incoming.getEndTime() != null && !incoming.getEndTime().isEmpty();
 
+                        // W trybie łączonym (!clearExisting) pusty dzień z drugiego pliku nie kasuje istniejącej zmiany
+                        if (!incomingIsShift && !clearExisting && !existing.isEmpty()) {
+                            continue;
+                        }
+
                         if (!existing.isEmpty()) {
                             shiftRepository.deleteNonManualShiftsForDate(date);
                             Log.d(TAG, "[import upsert] " + date + " - usunięto " + existing.size() + " starych wpisów");
@@ -1336,6 +1378,10 @@ public class MainViewModel extends AndroidViewModel {
                         }
                     }
                 }
+
+                // 3b. Przelicz obsadę (closingCrew) na kafelkach wszystkich zmian użytkownika
+                // na podstawie pełnej, połączonej tabeli global_shifts (Grafik Biurowy + Grafik Pracowniczy)
+                recalculateAllShiftsClosingCrewSync(userName);
 
                 // Zaplanuj powiadomienia dla zaktualizowanego grafiku
                 com.asystent.kinowy.notifications.NotificationScheduler.scheduleAlarms(
@@ -1366,6 +1412,63 @@ public class MainViewModel extends AndroidViewModel {
                 syncStatus.postValue("error:Błąd zapisu importu: " + e.getMessage());
             }
         });
+    }
+
+    /**
+     * Przelicza pole closingCrew na kafelkach wszystkich zmian użytkownika
+     * na podstawie aktualnej, połączonej zawartości tabeli global_shifts
+     * (dzięki czemu po dograniu Grafiku Pracowniczego lub Biurowego kafelki
+     * i Dashboard mają kompletny stan obsady kierowniczej i pracowniczej).
+     */
+    private void recalculateAllShiftsClosingCrewSync(String userName) {
+        try {
+            String myName = (userName != null && !userName.trim().isEmpty())
+                    ? userName.trim() : resolveCurrentUserName();
+            com.asystent.kinowy.db.ShiftDao shiftDao =
+                    com.asystent.kinowy.db.AppDatabase.getInstance(getApplication()).shiftDao();
+            List<Shift> allUserShifts = shiftDao.getAllShiftsSync();
+            if (allUserShifts != null) {
+                for (Shift s : allUserShifts) {
+                    if (s == null || s.getDate() == null) continue;
+                    boolean isWork = s.isWorkDay()
+                            && s.getStartTime() != null && !s.getStartTime().trim().isEmpty()
+                            && s.getEndTime() != null && !s.getEndTime().trim().isEmpty()
+                            && !"WOLNE".equalsIgnoreCase(s.getCategory())
+                            && !"WOLNE".equalsIgnoreCase(s.getDescription());
+                    if (isWork) {
+                        List<GlobalShift> dayGs = globalShiftDao.getShiftsByDate(s.getDate());
+                        String newCrew = com.asystent.kinowy.utils.ShiftUtils.buildOverlappingCrewString(
+                                s.getStartTime(), s.getEndTime(), s.getCategory(), myName, dayGs);
+                        if (s.getClosingCrew() == null || !newCrew.equals(s.getClosingCrew())) {
+                            s.setClosingCrew(newCrew);
+                            shiftDao.update(s);
+                        }
+                    }
+                }
+            }
+
+            // Odśwież współpracowników najbliższej zmiany na Dashboardzie
+            Shift currentNext = nextShift.getValue();
+            if (currentNext != null && currentNext.getDate() != null
+                    && currentNext.getStartTime() != null && currentNext.getEndTime() != null) {
+                List<GlobalShift> dailyShifts = globalShiftDao.getShiftsByDate(currentNext.getDate());
+                List<GlobalShift> overlapping = com.asystent.kinowy.utils.ShiftUtils
+                        .getOverlappingShifts(currentNext.getStartTime(), currentNext.getEndTime(), dailyShifts);
+                if (overlapping != null && !overlapping.isEmpty()) {
+                    List<GlobalShift> filtered = new ArrayList<>();
+                    for (GlobalShift gs : overlapping) {
+                        if (!com.asystent.kinowy.utils.ShiftUtils.isSelfShift(
+                                gs, myName, currentNext.getStartTime(), currentNext.getEndTime())) {
+                            filtered.add(gs);
+                        }
+                    }
+                    overlapping = filtered;
+                }
+                nextShiftCoworkers.postValue(com.asystent.kinowy.utils.ShiftUtils.formatOverlappingShifts(overlapping));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Błąd przeliczania closingCrew po imporcie: " + e.getMessage());
+        }
     }
 
     public MutableLiveData<Integer> getMonthlyHoursGoal() {
@@ -1583,25 +1686,32 @@ public class MainViewModel extends AndroidViewModel {
                     }
                 }
 
-                // 3. ŁĄCZYMY EXCELA Z RĘCZNYMI
+                // 3. ŁĄCZYMY EXCELA Z ISTNIEJĄCYMI ZMIANAMI (bez kasowania zmian z innych źródeł, np. ze zdjęcia OCR)
                 for (Shift excelShift : uniqueExcelShifts.values()) {
+                    String date = excelShift.getDate();
+                    if (date == null || date.isEmpty()) continue;
+
                     boolean conflict = false;
                     for (Shift manualShift : keptManualShifts) {
-                        if (manualShift.getDate() != null && manualShift.getDate().equals(excelShift.getDate())) {
+                        if (manualShift.getDate() != null && manualShift.getDate().equals(date)) {
                             conflict = true;
                             break;
                         }
                     }
                     if (!conflict) {
-                        finalShifts.add(excelShift);
+                        boolean isWorkShift = excelShift.getStartTime() != null && !excelShift.getStartTime().trim().isEmpty()
+                                && excelShift.getEndTime() != null && !excelShift.getEndTime().trim().isEmpty();
+                        if (isWorkShift) {
+                            shiftRepository.deleteNonManualShiftsForDate(date);
+                            shiftRepository.insertSync(excelShift);
+                        }
                     }
                 }
 
-                // 4. ZAPIS DO BAZY
-                shiftRepository.deleteAll();
-                for (Shift shift : finalShifts) {
-                    shiftRepository.insertSync(shift);
-                }
+                // 4. Przelicz obsadę na kafelkach na podstawie połączonej tabeli global_shifts
+                String userName = resolveCurrentUserName();
+                recalculateAllShiftsClosingCrewSync(userName);
+                finalShifts = shiftRepository.getAllShiftsSync();
 
                 com.asystent.kinowy.notifications.NotificationScheduler.scheduleAlarms(
                         getApplication(), finalShifts);

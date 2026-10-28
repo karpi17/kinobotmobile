@@ -71,6 +71,9 @@ public class CoworkerAdapter extends RecyclerView.Adapter<CoworkerAdapter.ViewHo
         }
 
         coworkers.sort((a, b) -> {
+            boolean la = com.asystent.kinowy.utils.ShiftUtils.isOfficeOrLeadershipShift(a);
+            boolean lb = com.asystent.kinowy.utils.ShiftUtils.isOfficeOrLeadershipShift(b);
+            if (la != lb) return la ? -1 : 1;
             String sa = a.getStartTime() != null ? a.getStartTime() : "";
             String sb = b.getStartTime() != null ? b.getStartTime() : "";
             int cmp = sa.compareTo(sb);
@@ -108,7 +111,8 @@ public class CoworkerAdapter extends RecyclerView.Adapter<CoworkerAdapter.ViewHo
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         GlobalShift gs = coworkers.get(position);
-        holder.tvName.setText(gs.getName());
+        boolean isLeader = com.asystent.kinowy.utils.ShiftUtils.isOfficeOrLeadershipShift(gs);
+        holder.tvName.setText(isLeader ? "⭐ " + gs.getName() : gs.getName());
         holder.tvTime.setText(gs.getStartTime() + "–" + gs.getEndTime());
 
         String cat = gs.getCategory() != null && !gs.getCategory().isEmpty() ? gs.getCategory() : "?";
@@ -118,19 +122,26 @@ public class CoworkerAdapter extends RecyclerView.Adapter<CoworkerAdapter.ViewHo
         StringBuilder badgeBuilder = new StringBuilder();
         if (isOpen) {
             badgeBuilder.append("☀️ OPEN");
-            if (!"OBSŁUGA".equalsIgnoreCase(cat) && !"OPEN".equalsIgnoreCase(cat)
+            if (isLeader) {
+                badgeBuilder.append(" • BIURO");
+            } else if (!"OBSŁUGA".equalsIgnoreCase(cat) && !"OPEN".equalsIgnoreCase(cat)
                     && !"?".equals(cat) && !"UNKNOWN".equalsIgnoreCase(cat)) {
                 badgeBuilder.append(" • ").append(cat);
             }
         } else if (isClose) {
             badgeBuilder.append("🌙 ZAMEK");
-            if (!"ZAMEK".equalsIgnoreCase(cat) && !"?".equals(cat) && !"UNKNOWN".equalsIgnoreCase(cat)) {
+            if (isLeader) {
+                badgeBuilder.append(" • BIURO");
+            } else if (!"ZAMEK".equalsIgnoreCase(cat) && !"?".equals(cat) && !"UNKNOWN".equalsIgnoreCase(cat)) {
                 badgeBuilder.append(" • ").append(cat);
             }
         } else {
             if ("MIĘDZYZMIANA".equalsIgnoreCase(cat) || "OBSŁUGA".equalsIgnoreCase(cat)
                     || "TL".equalsIgnoreCase(cat) || "?".equals(cat) || "UNKNOWN".equalsIgnoreCase(cat)) {
                 badgeBuilder.append("🕐 MIĘDZYZMIANA");
+                if (isLeader) {
+                    badgeBuilder.append(" • BIURO");
+                }
             } else {
                 badgeBuilder.append(cat);
             }

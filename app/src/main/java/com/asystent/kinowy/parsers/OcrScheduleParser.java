@@ -240,10 +240,11 @@ public class OcrScheduleParser implements ScheduleParser {
                         List<Text.Line> roleRow = rows.get(rowIndex - 1);
                         Text.Line bestRole = null;
                         int minDiff = Integer.MAX_VALUE;
+                        int roleTolerance = Math.max(260, bitmap.getWidth() / 6);
                         for (Text.Line roleCell : roleRow) {
                             if (roleCell.getBoundingBox() == null || candidate.getBoundingBox() == null) continue;
                             int diff = Math.abs(roleCell.getBoundingBox().centerX() - candidate.getBoundingBox().centerX());
-                            if (diff < minDiff && diff < 200) {
+                            if (diff < minDiff && diff < roleTolerance) {
                                 minDiff = diff;
                                 bestRole = roleCell;
                             }
@@ -258,6 +259,7 @@ public class OcrScheduleParser implements ScheduleParser {
                 }
                 // Fallback 2: jeśli Team Leader nie znaleziony, spróbuj podaną explicit rolę (lub Deputy Manager)
                 if (targetUserElement == null && targetRole != null && !targetRole.isEmpty()) {
+                    int roleTolerance = Math.max(260, bitmap.getWidth() / 6);
                     for (int i = 0; i < nameCandidates.size(); i++) {
                         Text.Line candidate = nameCandidates.get(i);
                         List<Text.Line> cRow = rowCandidates.get(i);
@@ -267,7 +269,7 @@ public class OcrScheduleParser implements ScheduleParser {
                             for (Text.Line roleCell : roleRow) {
                                 if (roleCell.getBoundingBox() == null || candidate.getBoundingBox() == null) continue;
                                 int diff = Math.abs(roleCell.getBoundingBox().centerX() - candidate.getBoundingBox().centerX());
-                                if (diff < 200 && roleCell.getText().toLowerCase().contains(targetRole.toLowerCase())) {
+                                if (diff < roleTolerance && roleCell.getText().toLowerCase().contains(targetRole.toLowerCase())) {
                                     targetUserElement = candidate;
                                     namesRow = cRow;
                                     Log.d(TAG, "Fallback: dopasowano na podstawie explicit roli '" + targetRole + "'");
@@ -359,12 +361,22 @@ public class OcrScheduleParser implements ScheduleParser {
             if (!nameStr.isEmpty() && !nameStr.toLowerCase().contains("godz") && nameStr.length() > 2) {
                 
                 // Szukamy roli dla tego imienia w wierszu wyżej
+                // Nagłówki ról (np. "Deputy Manager", "Team Leader") są scalone nad kilkoma kolumnami,
+                // więc sprawdzamy zarówno czy środek imienia mieści się w poszerzonym zakresie komórki roli,
+                // jak i najbliższy środek w szerszej tolerancji poziomej.
                 String roleSuffix = "";
                 int minDiff = Integer.MAX_VALUE;
+                int roleTolerance = Math.max(260, bitmap.getWidth() / 6);
                 for (Text.Line roleCell : roleRow) {
                     if (roleCell.getBoundingBox() == null || nameElement.getBoundingBox() == null) continue;
-                    int diff = Math.abs(roleCell.getBoundingBox().centerX() - nameElement.getBoundingBox().centerX());
-                    if (diff < minDiff && diff < 200) { // Tolerancja dopasowania w kolumnie
+                    int nameCenterX = nameElement.getBoundingBox().centerX();
+                    int roleLeft = roleCell.getBoundingBox().left - 90;
+                    int roleRight = roleCell.getBoundingBox().right + 90;
+                    int diff = Math.abs(roleCell.getBoundingBox().centerX() - nameCenterX);
+                    if (nameCenterX >= roleLeft && nameCenterX <= roleRight) {
+                        diff = diff / 2; // Preferuj rolę, pod którą bezpośrednio leży imię
+                    }
+                    if (diff < minDiff && diff < roleTolerance) { // Tolerancja dopasowania w kolumnie
                         minDiff = diff;
                         String roleText = roleCell.getText().toLowerCase(Locale.ROOT);
                         if (roleText.contains("team") || roleText.contains("leader") || roleText.contains("leoder") || roleText.contains("tl")) {

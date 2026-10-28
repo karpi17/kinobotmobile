@@ -101,15 +101,29 @@ public final class ShiftUtils {
     public static String formatOverlappingShifts(List<GlobalShift> overlapping) {
         if (overlapping == null || overlapping.isEmpty()) return null;
 
+        List<GlobalShift> sorted = new ArrayList<>(overlapping);
+        sorted.sort((a, b) -> {
+            boolean aLead = isOfficeOrLeadershipShift(a);
+            boolean bLead = isOfficeOrLeadershipShift(b);
+            if (aLead != bLead) return aLead ? -1 : 1;
+            String sa = a.getStartTime() != null ? a.getStartTime() : "";
+            String sb2 = b.getStartTime() != null ? b.getStartTime() : "";
+            return sa.compareTo(sb2);
+        });
+
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < overlapping.size(); i++) {
-            GlobalShift gs = overlapping.get(i);
+        for (int i = 0; i < sorted.size(); i++) {
+            GlobalShift gs = sorted.get(i);
+            boolean isLead = isOfficeOrLeadershipShift(gs);
+            if (isLead && gs.getName() != null && !gs.getName().startsWith("⭐")) {
+                sb.append("⭐ ");
+            }
             sb.append(gs.getName())
               .append("  |  ")
               .append(gs.getStartTime()).append("–").append(gs.getEndTime())
               .append("  |  ")
               .append(gs.getCategory() != null ? gs.getCategory() : "?");
-            if (i < overlapping.size() - 1) sb.append("\n");
+            if (i < sorted.size() - 1) sb.append("\n");
         }
         return sb.toString();
     }
@@ -120,6 +134,7 @@ public final class ShiftUtils {
      * Przykład: {@code "Z Tobą: Kacper W., Ola G., Tomek R."}
      * <p>
      * Ogranicza do 5 imion i dodaje {@code "+N"} jeśli jest więcej.
+     * Kadra kierownicza / biurowa (Manager, Deputy, TL) zawsze trafia na początek listy.
      *
      * @param overlapping lista z {@link #getOverlappingShifts}
      * @return skrócony string lub {@code null} jeśli lista pusta
@@ -127,15 +142,25 @@ public final class ShiftUtils {
     public static String formatWidgetCrew(List<GlobalShift> overlapping) {
         if (overlapping == null || overlapping.isEmpty()) return null;
 
+        List<GlobalShift> sorted = new ArrayList<>(overlapping);
+        sorted.sort((a, b) -> {
+            boolean aLead = isOfficeOrLeadershipShift(a);
+            boolean bLead = isOfficeOrLeadershipShift(b);
+            if (aLead != bLead) return aLead ? -1 : 1;
+            String sa = a.getStartTime() != null ? a.getStartTime() : "";
+            String sb2 = b.getStartTime() != null ? b.getStartTime() : "";
+            return sa.compareTo(sb2);
+        });
+
         int max = 5;
         StringBuilder sb = new StringBuilder("Z Tobą: ");
-        int count = Math.min(overlapping.size(), max);
+        int count = Math.min(sorted.size(), max);
         for (int i = 0; i < count; i++) {
-            sb.append(overlapping.get(i).getName());
+            sb.append(sorted.get(i).getName());
             if (i < count - 1) sb.append(", ");
         }
-        if (overlapping.size() > max) {
-            sb.append(" +").append(overlapping.size() - max);
+        if (sorted.size() > max) {
+            sb.append(" +").append(sorted.size() - max);
         }
         return sb.toString();
     }
@@ -187,32 +212,73 @@ public final class ShiftUtils {
     }
 
     /**
+     * Sprawdza, czy zmiana {@link GlobalShift} należy do kadry kierowniczej / biurowej
+     * (Manager, Deputy Manager, Team Leader / Kierownik).
+     */
+    public static boolean isOfficeOrLeadershipShift(GlobalShift gs) {
+        if (gs == null) return false;
+        String name = gs.getName() != null ? gs.getName().trim() : "";
+        String cat = gs.getCategory() != null ? gs.getCategory().trim() : "";
+
+        if (ReplacementFinder.isLeadershipCategory(name) || ReplacementFinder.isLeadershipCategory(cat)) {
+            return true;
+        }
+
+        // Jeżeli kategoria to typowe stanowisko pracownicze z Excela (BAR, OW, OBSŁUGA, SP, KASA, KAWIARNIA),
+        // a w nazwie nie ma oznaczenia roli (TL/Manager/Deputy), to jest to zwykły pracownik.
+        String catUpper = cat.toUpperCase(java.util.Locale.ROOT);
+        if (catUpper.contains("BAR") || catUpper.equals("OW") || catUpper.contains("OBSŁUG")
+                || catUpper.contains("OBSLUG") || catUpper.equals("SP") || catUpper.contains("KASA")
+                || catUpper.contains("KAWIARN") || catUpper.contains("MARATON")) {
+            return false;
+        }
+
+        // Dla starszych wpisów z grafiku biurowego bez sufiksu w nazwie (gdzie kategoria to OPEN / ZAMEK / MIĘDZYZMIANA)
+        String baseLower = name.replaceAll("\\s*\\(.*\\)$", "").replaceAll("\\s+#\\d+$", "").trim().toLowerCase(java.util.Locale.ROOT);
+        if ("OPEN".equals(catUpper) || "ZAMEK".equals(catUpper) || "MIĘDZYZMIANA".equals(catUpper)) {
+            if ("kasia".equals(baseLower) || "zosia".equals(baseLower) || "dominik".equals(baseLower)
+                    || "alan".equals(baseLower) || "sara".equals(baseLower) || "kacper".equals(baseLower)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Sprawdza, czy dany rekord {@link GlobalShift} należy do samego zalogowanego użytkownika
-     * (uwzględniając sufiks roli np. "Kacper (TL)", ale odróżniając np. "Kacper (Deputy)" o innych godzinach).
+     * (uwzględniając sufiks roli np. "Kacper (TL)", ale odróżniając np. "Kacper (Deputy)" / "Kacper (Manager)").
      */
     public static boolean isSelfShift(GlobalShift gs, String myName, String myStart, String myEnd) {
         if (gs == null || gs.getName() == null) return false;
         String gName = gs.getName().trim().toLowerCase(java.util.Locale.ROOT);
+        String gCat = gs.getCategory() != null ? gs.getCategory().trim().toLowerCase(java.util.Locale.ROOT) : "";
         String uName = (myName != null && !myName.trim().isEmpty())
                 ? myName.trim().toLowerCase(java.util.Locale.ROOT)
                 : "";
         if (uName.isEmpty()) return false;
 
-        if (gName.equals(uName) || gName.equals(uName + " (tl)")) return true;
-        String firstWord = uName.split("\\s+")[0];
-        if (gName.equals(firstWord) || gName.equals(firstWord + " (tl)")) return true;
-
-        // Jeśli użytkownik nie ma w nazwie "deputy"/"manager", a globalShift ma "(deputy)" lub "(manager)",
-        // to jest to inna osoba o tym samym imieniu (np. Kacper Deputy vs Kacper TL)
-        boolean userIsDeputyOrMgr = uName.contains("deputy") || uName.contains("manager");
-        boolean gsIsDeputyOrMgr = gName.contains("deputy") || gName.contains("manager");
+        // Jeśli użytkownik nie ma w nazwie "deputy"/"manager", a globalShift ma "(deputy)" lub "(manager)"
+        // (lub kategorię manager/deputy/kierownik), to jest to inna osoba o tym samym imieniu (np. Kacper Deputy vs Kacper TL)
+        boolean userIsDeputyOrMgr = uName.contains("deputy") || uName.contains("manager") || uName.contains("kierownik");
+        boolean gsIsDeputyOrMgr = gName.contains("deputy") || gName.contains("manager") || gName.contains("kierownik")
+                || gCat.contains("deputy") || gCat.contains("manager") || gCat.contains("kierownik");
         if (!userIsDeputyOrMgr && gsIsDeputyOrMgr) {
             return false;
         }
 
+        if (gName.equals(uName) || gName.equals(uName + " (tl)")) return true;
+        String firstWord = uName.split("\\s+")[0];
+        if (gName.equals(firstWord) || gName.equals(firstWord + " (tl)")) return true;
+
         if (gName.startsWith(firstWord + " ") || uName.startsWith(gName + " ")) {
+            // Nie traktuj innego pracownika z innym nazwiskiem jako siebie (np. "Kacper Kowalski" vs "Kacper")
+            if (gName.equals(firstWord + " w") || gName.equals(firstWord + " w.")
+                    || gName.contains("wernerowicz") || gName.contains("(tl)")) {
+                return true;
+            }
             if (myStart != null && myStart.equals(gs.getStartTime())
-                    && myEnd != null && myEnd.equals(gs.getEndTime())) {
+                    && myEnd != null && myEnd.equals(gs.getEndTime())
+                    && gName.contains("#")) {
                 return true;
             }
         }
@@ -221,7 +287,9 @@ public final class ShiftUtils {
 
     /**
      * Buduje listę współpracowników wyświetlanych na kafelku zmiany użytkownika.
-     * Zwraca WYŁĄCZNIE osoby, których zmiana realnie nakłada się czasowo ze zmianą użytkownika.
+     * Zwraca WYŁĄCZNIE osoby z kadry kierowniczej / biura (Menago / Deputy / TL),
+     * których zmiana realnie nakłada się czasowo ze zmianą użytkownika.
+     * Pełna obsada (wraz ze wszystkimi pracownikami z Excela) jest widoczna po kliknięciu w szczegóły zmiany.
      */
     public static String buildOverlappingCrewString(
             String myStart, String myEnd, String myCategory, String myName, List<GlobalShift> dailyShifts) {
@@ -240,6 +308,7 @@ public final class ShiftUtils {
         for (GlobalShift gs : overlapping) {
             if (gs == null || gs.isDeleted() || gs.getName() == null || gs.getName().trim().isEmpty()) continue;
             if (isSelfShift(gs, myName, myStart, myEnd)) continue;
+            if (!isOfficeOrLeadershipShift(gs)) continue;
 
             String personName = gs.getName().trim();
             String gsType = resolveShiftType(gs.getStartTime(), gs.getEndTime(), gs.getCategory());

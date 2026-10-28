@@ -138,14 +138,11 @@ public class NewFormatExcelParser implements ScheduleParser {
 
         if (targetUserCol == null) {
             warnings.add(new ParserWarning(ParserWarning.Type.UNKNOWN_NAME,
-                    "Nie znaleziono w grafiku pracownika o imieniu: " + targetUserName + ". Używam pierwszej dostępnej kolumny Team Leader."));
-            targetUserCol = employees.stream()
-                    .filter(e -> e.position.equalsIgnoreCase("Team Leader"))
-                    .findFirst()
-                    .orElse(employees.get(0));
+                    "Brak Twojej kolumny (" + targetUserName + ") w tym pliku — wczytano obsadę ekipy bez nadpisywania Twoich zmian."));
+            Log.d(TAG, "Tryb ekipy (observer): brak kolumny dla '" + targetUserName + "'");
+        } else {
+            Log.d(TAG, "Wybrana kolumna użytkownika: " + targetUserCol.name + " (" + targetUserCol.position + ") na kolumnie " + targetUserCol.colIndex);
         }
-
-        Log.d(TAG, "Wybrana kolumna użytkownika: " + targetUserCol.name + " (" + targetUserCol.position + ") na kolumnie " + targetUserCol.colIndex);
 
         Map<String, List<Shift>> scheduleByName = new LinkedHashMap<>();
         List<String> allDates = new ArrayList<>();
@@ -201,7 +198,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                     allGlobalShifts.add(gs);
 
                     // Wszyscy koledzy pracujący w danym dniu (poza kolumną samego użytkownika)
-                    if (emp.colIndex != targetUserCol.colIndex) {
+                    if (targetUserCol == null || emp.colIndex != targetUserCol.colIndex) {
                         otherShiftsForDay.add(gs);
                         Shift empShift = new Shift(
                                 dateStr,
@@ -225,57 +222,65 @@ public class NewFormatExcelParser implements ScheduleParser {
             dailyOtherGlobalShiftsMap.put(dateStr, otherShiftsForDay);
         }
 
-        // 4. Budujemy obiekty Shift dla docelowego użytkownika
-        for (int r = 2; r <= sheet.getLastRowNum(); r++) {
-            Row row = sheet.getRow(r);
-            if (row == null) continue;
+        // 4. Budujemy obiekty Shift dla docelowego użytkownika (jeśli występuje w tym grafiku)
+        int userWorkShiftCount = 0;
+        if (targetUserCol != null) {
+            for (int r = 2; r <= sheet.getLastRowNum(); r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) continue;
 
-            int dayNum = parseDayNumber(row.getCell(0));
-            if (dayNum < 1 || dayNum > maxDayInMonth) {
-                dayNum = parseDayNumber(row.getCell(1));
+                int dayNum = parseDayNumber(row.getCell(0));
+                if (dayNum < 1 || dayNum > maxDayInMonth) {
+                    dayNum = parseDayNumber(row.getCell(1));
+                }
+                if (dayNum < 1 || dayNum > maxDayInMonth) continue;
+
+                String dateStr = String.format(Locale.US, "%04d-%02d-%02d", currentYear, monthValue, dayNum);
+                Cell userCell = row.getCell(targetUserCol.colIndex);
+                String rawText = getCellValueAsString(userCell);
+                ParsedShiftInfo info = parseShiftText(rawText);
+
+                if (info.isShift) {
+                    userWorkShiftCount++;
+                    String userCat = com.asystent.kinowy.utils.ShiftUtils.resolveShiftType(
+                            info.startTime, info.endTime, info.category);
+                    String userDesc = (info.description != null && !info.description.isEmpty()) ? info.description : userCat;
+                    Shift userShift = new Shift(
+                            dateStr,
+                            info.startTime,
+                            info.endTime,
+                            userDesc,
+                            true,
+                            false,
+                            userCat
+                    );
+                    userShift.setClosingShift(info.isClosingShift);
+
+                    List<GlobalShift> otherShifts = dailyOtherGlobalShiftsMap.get(dateStr);
+                    String overlappingCrew = com.asystent.kinowy.utils.ShiftUtils.buildOverlappingCrewString(
+                            info.startTime, info.endTime, userCat, targetUserCol.name, otherShifts);
+                    userShift.setClosingCrew(overlappingCrew);
+
+                    targetUserShifts.add(userShift);
+                    scheduleByName.get(targetUserCol.name).add(userShift);
+                } else {
+                    // Pokazujemy w podglądzie jako WOLNE (żeby zachować ciągłość dni)
+                    Shift userShift = new Shift(
+                            dateStr,
+                            "",
+                            "",
+                            "WOLNE",
+                            false,
+                            false,
+                            "WOLNE"
+                    );
+                    userShift.setClosingCrew("");
+                    targetUserShifts.add(userShift);
+                    scheduleByName.get(targetUserCol.name).add(userShift);
+                }
             }
-            if (dayNum < 1 || dayNum > maxDayInMonth) continue;
-
-            String dateStr = String.format(Locale.US, "%04d-%02d-%02d", currentYear, monthValue, dayNum);
-            Cell userCell = row.getCell(targetUserCol.colIndex);
-            String rawText = getCellValueAsString(userCell);
-            ParsedShiftInfo info = parseShiftText(rawText);
-
-            if (info.isShift) {
-                String userCat = determineEffectiveCategory(targetUserCol.position, info.category, info.isClosingShift);
-                String userDesc = (info.description != null && !info.description.isEmpty()) ? info.description : userCat;
-                Shift userShift = new Shift(
-                        dateStr,
-                        info.startTime,
-                        info.endTime,
-                        userDesc,
-                        true,
-                        false,
-                        userCat
-                );
-                userShift.setClosingShift(info.isClosingShift);
-
-                List<GlobalShift> otherShifts = dailyOtherGlobalShiftsMap.get(dateStr);
-                String overlappingCrew = com.asystent.kinowy.utils.ShiftUtils.buildOverlappingCrewString(
-                        info.startTime, info.endTime, userCat, "", otherShifts);
-                userShift.setClosingCrew(overlappingCrew);
-
-                targetUserShifts.add(userShift);
-                scheduleByName.get(targetUserCol.name).add(userShift);
-            } else {
-                // Pokazujemy w podglądzie jako WOLNE (żeby zachować ciągłość dni)
-                Shift userShift = new Shift(
-                        dateStr,
-                        "",
-                        "",
-                        "WOLNE",
-                        false,
-                        false,
-                        "WOLNE"
-                );
-                userShift.setClosingCrew("");
-                targetUserShifts.add(userShift);
-                scheduleByName.get(targetUserCol.name).add(userShift);
+            if (userWorkShiftCount == 0) {
+                targetUserShifts.clear();
             }
         }
 
@@ -321,11 +326,14 @@ public class NewFormatExcelParser implements ScheduleParser {
     }
 
     private String determineEffectiveCategory(String position, String parsedCategory, boolean isClosing) {
-        if (parsedCategory != null && ("OPEN".equals(parsedCategory) || "ZAMEK".equals(parsedCategory)
-                || "MIĘDZYZMIANA".equals(parsedCategory) || "INNE (TMS)".equals(parsedCategory))) {
+        if ("INNE (TMS)".equals(parsedCategory)) {
             return parsedCategory;
         }
         if (isLeadershipPosition(position)) {
+            if (parsedCategory != null && ("OPEN".equals(parsedCategory) || "ZAMEK".equals(parsedCategory)
+                    || "MIĘDZYZMIANA".equals(parsedCategory))) {
+                return parsedCategory;
+            }
             return isClosing ? "ZAMEK" : "OPEN";
         }
         if (position != null && !position.trim().isEmpty()) {
@@ -333,8 +341,11 @@ public class NewFormatExcelParser implements ScheduleParser {
             if (pLower.contains("bar")) return isClosing ? "BAR (ZAMEK)" : "BAR";
             if (pLower.contains("kasa")) return "KASA";
             if (pLower.contains("tms") || pLower.contains("projekcj")) return "INNE (TMS)";
+            if (pLower.contains("obs") || pLower.contains("ow") || pLower.contains("widz") || pLower.contains("bilet")) {
+                return "OBSŁUGA";
+            }
         }
-        return parsedCategory != null ? parsedCategory : "OPEN";
+        return parsedCategory != null ? parsedCategory : "OBSŁUGA";
     }
 
     /**
@@ -486,6 +497,7 @@ public class NewFormatExcelParser implements ScheduleParser {
             lastCol = posRow.getLastCellNum();
         }
 
+        java.util.Map<String, Integer> nameCounts = new java.util.HashMap<>();
         for (int c = 0; c < lastCol; c++) {
             if (posRow != null) {
                 String posStr = getMergedCellValue(posRow, c, mergedRegions);
@@ -510,8 +522,26 @@ public class NewFormatExcelParser implements ScheduleParser {
             if (nameStr.equalsIgnoreCase("Team Leader")) continue;
             if (nameStr.matches("^\\d+([.,]\\d+)?$")) continue; // czysto liczbowe → kolumna godz
 
-            result.add(new EmployeeHeader(c, nameStr, currentPosition));
-            Log.d(TAG, "Znaleziono pracownika: " + nameStr + " (" + currentPosition + ") kol=" + c);
+            String roleSuffix = "";
+            String posLow = currentPosition.toLowerCase(Locale.ROOT);
+            if (!nameStr.contains("(")) {
+                if (posLow.contains("team") || posLow.contains("leader") || posLow.equals("tl")) {
+                    roleSuffix = " (TL)";
+                } else if (posLow.contains("deputy") || posLow.contains("z-ca") || posLow.contains("zastępca") || posLow.equals("dm")) {
+                    roleSuffix = " (Deputy)";
+                } else if (posLow.contains("manager") || posLow.contains("menadżer") || posLow.contains("kierownik")) {
+                    roleSuffix = " (Manager)";
+                }
+            }
+            String fullEmpName = nameStr + roleSuffix;
+            int count = nameCounts.getOrDefault(fullEmpName, 0) + 1;
+            nameCounts.put(fullEmpName, count);
+            if (count > 1) {
+                fullEmpName = fullEmpName + " (" + count + ")";
+            }
+
+            result.add(new EmployeeHeader(c, fullEmpName, currentPosition));
+            Log.d(TAG, "Znaleziono pracownika: " + fullEmpName + " (" + currentPosition + ") kol=" + c);
         }
 
         if (result.isEmpty()) {
@@ -593,7 +623,12 @@ public class NewFormatExcelParser implements ScheduleParser {
         }
 
         // 3. Jeśli grafik się zmienił i Kacper jest teraz Deputy Manager / Manager — szukamy po samym imieniu
+        // Ale jeśli w ustawieniach wybrano rolę kierowniczą (Team Leader / Manager / Deputy), nie dopasowujemy zwykłego pracownika BAR/OW o tym samym imieniu!
+        boolean targetIsLeadership = targetRole != null && isLeadershipPosition(targetRole);
         for (EmployeeHeader emp : employees) {
+            if (targetIsLeadership && !isLeadershipPosition(emp.position) && !emp.position.isEmpty()) {
+                continue;
+            }
             if (nameMatches(emp.name, targetUserName)) {
                 Log.d(TAG, "Dopasowano po imieniu (rola: " + emp.position + "): " + emp.name);
                 return emp;

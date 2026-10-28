@@ -85,7 +85,7 @@ public class ExcelParserIntegrationTest {
         
         // 1. Sprawdzamy wyciągnięte nazwy i stanowiska
         List<String> names = result.getFoundNames();
-        assertTrue(names.contains("Kacper"));
+        assertTrue(names.contains("Kacper (TL)"));
         assertTrue(names.contains("Anna"));
 
         // 2. Sprawdzamy zmiany Kacpra (target user)
@@ -97,9 +97,8 @@ public class ExcelParserIntegrationTest {
         assertEquals("2026-08-01", s1.getDate());
         assertEquals("09:00", s1.getStartTime());
         assertEquals("17:00", s1.getEndTime());
-        // Wg logiki parsera: wszyscy koledzy pracujący danego dnia
-        // Anna w dniu 1 robi 12-20, więc powinna być w closing crew (chociaż to koledzy, closing crew w nazwie zostało)
-        assertTrue(s1.getClosingCrew().contains("Anna"));
+        // Na kafelku głównym (closingCrew) wyświetlają się tylko osoby z biura/TL, a zwykli pracownicy Obsługi (Anna) są w GlobalShifts (szczegóły zmiany)
+        assertEquals("", s1.getClosingCrew().trim());
 
         // Shift 2: close (17:00 - 01:00)
         Shift s2 = userShifts.get(1);
@@ -116,7 +115,7 @@ public class ExcelParserIntegrationTest {
         assertEquals("17:00", s3.getStartTime());
         assertEquals("22:00", s3.getEndTime());
         assertEquals("TMS paczki", s3.getDescription());
-        assertTrue(s3.getClosingCrew().contains("Anna"));
+        assertEquals("", s3.getClosingCrew().trim());
 
         // 3. Sprawdzamy GlobalShifts
         List<GlobalShift> allGlobal = result.getAllGlobalShifts();
@@ -126,9 +125,11 @@ public class ExcelParserIntegrationTest {
         assertNotNull(result.getScheduleByName().get("Anna"));
         assertEquals(2, result.getScheduleByName().get("Anna").size());
 
-        // 5. Sprawdzamy dla Anny jako targetUser, że dzień WOLNE (off) ma nie-nullowy closingCrew ("")
+        // 5. Sprawdzamy dla Anny jako targetUser: dzień 1 ma na kafelku Kacper (TL), a dzień 2 WOLNE (off) ma ""
         ByteArrayInputStream isAnna = createMockExcelSchedule();
         ScheduleParseResult resAnna = parser.parse(isAnna, new ScheduleParseOptions("Anna", "Obsługa", 2026, true));
+        Shift annaDay1 = resAnna.getTargetUserShifts().get(0);
+        assertTrue(annaDay1.getClosingCrew().contains("Kacper (TL)"));
         Shift annaDay2 = resAnna.getTargetUserShifts().get(1);
         assertEquals("WOLNE", annaDay2.getDescription());
         assertNotNull(annaDay2.getClosingCrew());

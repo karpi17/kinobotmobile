@@ -202,6 +202,24 @@ public class ShiftUtilsTest {
         assertTrue(result.contains("+2"));
     }
 
+    @Test
+    public void buildOverlappingCrewString_showsOnlyOverlappingLeadershipOnTile() {
+        List<GlobalShift> dailyShifts = Arrays.asList(
+                new GlobalShift("Kasia (Manager)", "2026-08-06", "09:00", "17:00", "OPEN"),
+                new GlobalShift("Kacper (Deputy)", "2026-08-06", "17:00", "01:00", "ZAMEK"),
+                new GlobalShift("Kacper (TL)", "2026-08-06", "17:00", "01:00", "ZAMEK"),
+                new GlobalShift("Maja", "2026-08-06", "17:00", "01:00", "BAR (ZAMEK)"),
+                new GlobalShift("Tomek", "2026-08-06", "16:00", "23:00", "OBSŁUGA")
+        );
+        String tileCrew = ShiftUtils.buildOverlappingCrewString(
+                "17:00", "01:00", "ZAMEK", "Kacper", dailyShifts);
+        assertTrue(tileCrew.contains("Kacper (Deputy)"));
+        assertFalse(tileCrew.contains("Kasia"));
+        assertFalse(tileCrew.contains("Maja"));
+        assertFalse(tileCrew.contains("Tomek"));
+        assertFalse(tileCrew.contains("Kacper (TL)"));
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // Helper
     // ═══════════════════════════════════════════════════════════════════
