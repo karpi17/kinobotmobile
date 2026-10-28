@@ -349,15 +349,36 @@ public abstract class AppDatabase extends RoomDatabase {
     public static final Migration MIGRATION_15_16 = new Migration(15, 16) {
         @Override
         public void migrate(@androidx.annotation.NonNull SupportSQLiteDatabase database) {
-            database.execSQL(
-                "ALTER TABLE `active_employees` ADD COLUMN `is_active` INTEGER NOT NULL DEFAULT 1"
-            );
-            database.execSQL(
-                "ALTER TABLE `active_employees` ADD COLUMN `role` TEXT NOT NULL DEFAULT 'EMPLOYEE'"
-            );
-            database.execSQL(
-                "ALTER TABLE `active_employees` ADD COLUMN `last_seen_date` TEXT"
-            );
+            android.database.Cursor cursor = database.query("PRAGMA table_info(active_employees)");
+            boolean hasIsActive = false;
+            boolean hasRole = false;
+            boolean hasLastSeen = false;
+            int nameIndex = cursor.getColumnIndex("name");
+            if (nameIndex != -1) {
+                while (cursor.moveToNext()) {
+                    String col = cursor.getString(nameIndex);
+                    if ("is_active".equals(col)) hasIsActive = true;
+                    if ("role".equals(col)) hasRole = true;
+                    if ("last_seen_date".equals(col)) hasLastSeen = true;
+                }
+            }
+            cursor.close();
+
+            if (!hasIsActive) {
+                database.execSQL(
+                    "ALTER TABLE `active_employees` ADD COLUMN `is_active` INTEGER NOT NULL DEFAULT 1"
+                );
+            }
+            if (!hasRole) {
+                database.execSQL(
+                    "ALTER TABLE `active_employees` ADD COLUMN `role` TEXT NOT NULL DEFAULT 'EMPLOYEE'"
+                );
+            }
+            if (!hasLastSeen) {
+                database.execSQL(
+                    "ALTER TABLE `active_employees` ADD COLUMN `last_seen_date` TEXT"
+                );
+            }
         }
     };
 

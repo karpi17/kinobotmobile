@@ -29,6 +29,7 @@ public class ActiveEmployee {
     @ColumnInfo(name = "is_active", defaultValue = "1")
     private boolean isActive = true;
 
+    @NonNull
     @ColumnInfo(name = "role", defaultValue = "'EMPLOYEE'")
     private String role = ROLE_EMPLOYEE;
 

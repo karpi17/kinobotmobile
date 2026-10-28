@@ -502,6 +502,8 @@ public class NewFormatExcelParser implements ScheduleParser {
             // 4. "godz"
             if (nameStr.isEmpty()) continue;
             if (nameStr.equalsIgnoreCase("godz")) continue;
+            if (nameStr.equalsIgnoreCase("dzień") || nameStr.equalsIgnoreCase("dzien")
+                    || nameStr.equalsIgnoreCase("day") || nameStr.equalsIgnoreCase("data")) continue;
             if (nameStr.equalsIgnoreCase("Manager")) continue;
             if (nameStr.equalsIgnoreCase("Deputy Manager")) continue;
             if (nameStr.equalsIgnoreCase("Team Leader")) continue;
@@ -517,6 +519,8 @@ public class NewFormatExcelParser implements ScheduleParser {
             for (int c = 0; c < nameRow.getLastCellNum(); c++) {
                 String nameStr = getCellValueAsString(nameRow.getCell(c)).trim();
                 if (nameStr.isEmpty() || nameStr.equalsIgnoreCase("godz")
+                        || nameStr.equalsIgnoreCase("dzień") || nameStr.equalsIgnoreCase("dzien")
+                        || nameStr.equalsIgnoreCase("day") || nameStr.equalsIgnoreCase("data")
                         || nameStr.equalsIgnoreCase("Manager")
                         || nameStr.equalsIgnoreCase("Deputy Manager")
                         || nameStr.equalsIgnoreCase("Team Leader")
@@ -549,9 +553,20 @@ public class NewFormatExcelParser implements ScheduleParser {
         return "";
     }
 
+    private boolean nameMatches(String empName, String targetUserName) {
+        if (empName == null || targetUserName == null) return false;
+        String e = empName.trim().toLowerCase(Locale.ROOT);
+        String t = targetUserName.trim().toLowerCase(Locale.ROOT);
+        if (e.isEmpty() || t.isEmpty()) return false;
+        if (e.equals(t)) return true;
+        if (e.contains(t) || t.contains(e)) return true;
+        String firstWordTarget = t.split("\\s+")[0];
+        String firstWordEmp = e.split("\\s+")[0];
+        return firstWordTarget.equals(firstWordEmp);
+    }
+
     private EmployeeHeader findTargetUserColumn(List<EmployeeHeader> employees, String targetUserName, String targetRole) {
         if (targetUserName == null || targetUserName.isEmpty()) targetUserName = "Kacper";
-        String lowerTarget = targetUserName.toLowerCase();
 
         Log.d(TAG, "Szukam kolumny dla: '" + targetUserName + "' rola='" + targetRole + "' wśród " + employees.size() + " pracowników");
         for (EmployeeHeader e : employees) {
@@ -561,7 +576,7 @@ public class NewFormatExcelParser implements ScheduleParser {
         // 1. Priorytet: dokładna rola z ustawień (jeśli ustawiona przez użytkownika)
         if (targetRole != null && !targetRole.isEmpty() && !targetRole.equalsIgnoreCase("Dowolna (Automatycznie)")) {
             for (EmployeeHeader emp : employees) {
-                if (emp.position.equalsIgnoreCase(targetRole) && emp.name.toLowerCase().contains(lowerTarget)) {
+                if (emp.position.equalsIgnoreCase(targetRole) && nameMatches(emp.name, targetUserName)) {
                     Log.d(TAG, "Dopasowano po roli z ustawień: " + emp.name + " (" + emp.position + ")");
                     return emp;
                 }
@@ -570,16 +585,15 @@ public class NewFormatExcelParser implements ScheduleParser {
 
         // 2. Szukamy: Team Leader (najczęstsza historycznie rola Kacpra)
         for (EmployeeHeader emp : employees) {
-            if (emp.position.equalsIgnoreCase("Team Leader") && emp.name.toLowerCase().contains(lowerTarget)) {
+            if (emp.position.equalsIgnoreCase("Team Leader") && nameMatches(emp.name, targetUserName)) {
                 Log.d(TAG, "Dopasowano po Team Leader: " + emp.name);
                 return emp;
             }
         }
 
         // 3. Jeśli grafik się zmienił i Kacper jest teraz Deputy Manager / Manager — szukamy po samym imieniu
-        // To jest kluczowy fallback gdy rola zmienia się między miesiącami!
         for (EmployeeHeader emp : employees) {
-            if (emp.name.toLowerCase().contains(lowerTarget)) {
+            if (nameMatches(emp.name, targetUserName)) {
                 Log.d(TAG, "Dopasowano po imieniu (rola: " + emp.position + "): " + emp.name);
                 return emp;
             }

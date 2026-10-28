@@ -215,7 +215,7 @@ public class OcrScheduleParser implements ScheduleParser {
         List<List<Text.Line>> rowCandidates = new ArrayList<>();
         for (List<Text.Line> row : rows) {
             for (Text.Line line : row) {
-                if (line.getText().toLowerCase().contains(targetUserName.toLowerCase())) {
+                if (nameMatches(line.getText(), targetUserName)) {
                     nameCandidates.add(line);
                     rowCandidates.add(row);
                 }
@@ -461,8 +461,18 @@ public class OcrScheduleParser implements ScheduleParser {
                 }
             } catch (NumberFormatException e) {}
             
-            boolean hasDayName = firstCell.toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*") ||
-                                 secondCell.toLowerCase().matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*");
+            boolean hasDayName = false;
+            for (int ci = 0; ci < Math.min(row.size(), 4); ci++) {
+                String txt = row.get(ci).getText().toLowerCase();
+                if (txt.matches(".*(pon|wt|śr|czw|pt|sob|ndz|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*")) {
+                    hasDayName = true;
+                    break;
+                }
+            }
+            if (!hasDayName && parsedNumber != lastDayNum + 1) {
+                continue;
+            }
+
 
             if (parsedNumber == lastDayNum + 1 && parsedNumber <= maxDayInMonth) {
                 dayNum = parsedNumber;
@@ -629,6 +639,18 @@ public class OcrScheduleParser implements ScheduleParser {
         }
         Log.d(TAG, "=====================================================");
         return parseResult;
+    }
+
+        private boolean nameMatches(String empName, String targetUserName) {
+        if (empName == null || targetUserName == null) return false;
+        String e = empName.trim().toLowerCase(Locale.ROOT);
+        String t = targetUserName.trim().toLowerCase(Locale.ROOT);
+        if (e.equals(t) || e.contains(t) || t.contains(e)) return true;
+        String[] tParts = t.split("\\s+");
+        if (tParts.length > 0 && e.equals(tParts[0])) return true;
+        String[] eParts = e.split("\\s+");
+        if (eParts.length > 0 && t.equals(eParts[0])) return true;
+        return false;
     }
 
     private static class MatchPair {

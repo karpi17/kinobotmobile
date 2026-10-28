@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 16,
-    "identityHash": "087323e3386672951ea0aee946123904",
+    "identityHash": "56d22f38e43292d22483b44b1dc9b23f",
     "entities": [
       {
         "tableName": "shifts",
@@ -209,7 +209,7 @@
       },
       {
         "tableName": "active_employees",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `is_active` INTEGER NOT NULL DEFAULT 1, `role` TEXT DEFAULT 'EMPLOYEE', `last_seen_date` TEXT, PRIMARY KEY(`name`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `is_active` INTEGER NOT NULL DEFAULT 1, `role` TEXT NOT NULL DEFAULT 'EMPLOYEE', `last_seen_date` TEXT, PRIMARY KEY(`name`))",
         "fields": [
           {
             "fieldPath": "name",
@@ -228,7 +228,7 @@
             "fieldPath": "role",
             "columnName": "role",
             "affinity": "TEXT",
-            "notNull": false,
+            "notNull": true,
             "defaultValue": "'EMPLOYEE'"
           },
           {
@@ -456,7 +456,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '087323e3386672951ea0aee946123904')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '56d22f38e43292d22483b44b1dc9b23f')"
     ]
   }
 }
