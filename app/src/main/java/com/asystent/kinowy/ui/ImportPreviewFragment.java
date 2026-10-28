@@ -199,9 +199,67 @@ public class ImportPreviewFragment extends Fragment {
         android.widget.EditText etEnd = dialogView.findViewById(R.id.et_shift_end);
         android.widget.EditText etCategory = dialogView.findViewById(R.id.et_shift_category);
 
-        // Ukryj sekcje wymagające zapisanej w bazie zmiany
+        // Pokaż obsadę dnia z pendingImport w szczegółach zmiany (również przed zapisem do bazy)
         View coworkersSection = dialogView.findViewById(R.id.layout_coworkers_section);
-        if (coworkersSection != null) coworkersSection.setVisibility(View.GONE);
+        RecyclerView rvCoworkers = dialogView.findViewById(R.id.rv_coworkers_list);
+        TextView tvCoworkersTitle = dialogView.findViewById(R.id.tv_coworkers_section_title);
+        com.google.android.material.button.MaterialButton btnToggleFullDay =
+                dialogView.findViewById(R.id.btn_toggle_full_day_crew);
+        View btnAddCoworker = dialogView.findViewById(R.id.btn_add_coworker);
+        if (btnAddCoworker != null) btnAddCoworker.setVisibility(View.GONE);
+
+        ScheduleParseResult pendingResult = viewModel.getPendingImport().getValue();
+        if (coworkersSection != null && rvCoworkers != null && pendingResult != null
+                && pendingResult.getAllGlobalShifts() != null && shift.getDate() != null) {
+            coworkersSection.setVisibility(View.VISIBLE);
+            rvCoworkers.setLayoutManager(new LinearLayoutManager(requireContext()));
+            CoworkerAdapter cwAdapter = new CoworkerAdapter(null);
+            rvCoworkers.setAdapter(cwAdapter);
+
+            final boolean[] showFullDay = new boolean[]{true};
+            final String myName = requireContext()
+                    .getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE)
+                    .getString("user_name", "Kacper").trim();
+
+            Runnable updatePreviewCoworkers = () -> {
+                String curStart = (etStart != null && etStart.getText() != null) ? etStart.getText().toString().trim() : shift.getStartTime();
+                String curEnd = (etEnd != null && etEnd.getText() != null) ? etEnd.getText().toString().trim() : shift.getEndTime();
+                boolean hasHours = curStart != null && !curStart.isEmpty() && curEnd != null && !curEnd.isEmpty();
+                boolean fullDayMode = showFullDay[0] || !hasHours;
+
+                List<com.asystent.kinowy.models.GlobalShift> dayAll = new java.util.ArrayList<>();
+                for (com.asystent.kinowy.models.GlobalShift gs : pendingResult.getAllGlobalShifts()) {
+                    if (gs != null && shift.getDate().equals(gs.getDate())
+                            && !com.asystent.kinowy.utils.ShiftUtils.isSelfShift(gs, myName, curStart, curEnd)) {
+                        dayAll.add(gs);
+                    }
+                }
+
+                List<com.asystent.kinowy.models.GlobalShift> displayList = fullDayMode
+                        ? dayAll
+                        : com.asystent.kinowy.utils.ShiftUtils.getOverlappingShifts(curStart, curEnd, dayAll);
+
+                if (tvCoworkersTitle != null) {
+                    tvCoworkersTitle.setText(fullDayMode
+                            ? "👥 Obsada w tym dniu (" + displayList.size() + ")"
+                            : "👥 Współpracownicy na mojej zmianie (" + displayList.size() + ")");
+                }
+                cwAdapter.setData(displayList, dayAll);
+            };
+
+            if (btnToggleFullDay != null) {
+                btnToggleFullDay.setText("W moim czasie");
+                btnToggleFullDay.setOnClickListener(v -> {
+                    showFullDay[0] = !showFullDay[0];
+                    btnToggleFullDay.setText(showFullDay[0] ? "W moim czasie" : "Cały dzień");
+                    updatePreviewCoworkers.run();
+                });
+            }
+            updatePreviewCoworkers.run();
+        } else if (coworkersSection != null) {
+            coworkersSection.setVisibility(View.GONE);
+        }
+
         View btnFindReplacement = dialogView.findViewById(R.id.btn_find_replacement);
         if (btnFindReplacement != null) btnFindReplacement.setVisibility(View.GONE);
         View swAlarm = dialogView.findViewById(R.id.switch_alarm);
@@ -239,22 +297,25 @@ public class ImportPreviewFragment extends Fragment {
         }
 
         new androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                .setTitle("Edytuj godziny zmiany")
+                .setTitle("Szczegóły i edycja zmiany")
                 .setView(dialogView)
                 .setPositiveButton("Zapisz", (dialog, which) -> {
                     if (etDate != null && etDate.getText() != null && !etDate.getText().toString().trim().isEmpty()) {
                         shift.setDate(etDate.getText().toString().trim());
                     }
-                    if (etCategory != null && etCategory.getText() != null && !etCategory.getText().toString().trim().isEmpty()) {
-                        shift.setCategory(etCategory.getText().toString().trim().toUpperCase());
-                    }
                     if (etStart != null && etEnd != null) {
                         shift.setStartTime(etStart.getText().toString().trim());
                         shift.setEndTime(etEnd.getText().toString().trim());
-                        shiftAdapter.notifyDataSetChanged();
                     }
+                    String rawCat = (etCategory != null && etCategory.getText() != null)
+                            ? etCategory.getText().toString().trim().toUpperCase() : shift.getCategory();
+                    String resolvedCat = com.asystent.kinowy.utils.ShiftUtils.resolveShiftType(
+                            shift.getStartTime(), shift.getEndTime(), rawCat);
+                    shift.setCategory(resolvedCat);
+                    shift.setDescription(resolvedCat);
+                    shiftAdapter.notifyDataSetChanged();
                 })
-                .setNegativeButton("Anuluj", null)
+                .setNegativeButton("Zamknij", null)
                 .show();
     }
 }

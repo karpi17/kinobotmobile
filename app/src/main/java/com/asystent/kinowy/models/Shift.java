@@ -105,4 +105,11 @@ public class Shift {
     @Nullable
     public String getClosingCrew() { return closingCrew; }
     public void setClosingCrew(@Nullable String closingCrew) { this.closingCrew = closingCrew; }
+
+    public boolean isWorkDay() {
+        return startTime != null && !startTime.trim().isEmpty()
+                && endTime != null && !endTime.trim().isEmpty()
+                && !"WOLNE".equalsIgnoreCase(category)
+                && !"WOLNE".equalsIgnoreCase(description);
+    }
 }

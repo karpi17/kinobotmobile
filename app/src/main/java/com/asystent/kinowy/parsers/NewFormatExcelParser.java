@@ -159,7 +159,7 @@ public class NewFormatExcelParser implements ScheduleParser {
         }
 
         // 3. Iteracja po wierszach danych (dni miesiąca)
-        Map<String, List<String>> dailyCrewMap = new HashMap<>(); // date -> list of names working
+        Map<String, List<GlobalShift>> dailyOtherGlobalShiftsMap = new HashMap<>(); // date -> list of other employees' GlobalShift
         int maxDayInMonth = java.time.YearMonth.of(currentYear, monthValue).lengthOfMonth();
 
         for (int r = 2; r <= sheet.getLastRowNum(); r++) {
@@ -180,7 +180,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                 allDates.add(dateStr);
             }
 
-            List<String> coworkersForDay = new ArrayList<>();
+            List<GlobalShift> otherShiftsForDay = new ArrayList<>();
 
             // Najpierw czytamy i parsujemy wszystkich pracowników dla tej daty
             for (EmployeeHeader emp : employees) {
@@ -200,16 +200,14 @@ public class NewFormatExcelParser implements ScheduleParser {
                     gs.setManuallyEdited(false);
                     allGlobalShifts.add(gs);
 
-                    // Wszyscy koledzy pracujący w danym dniu (poza samym użytkownikiem)
-                    if (!emp.name.equalsIgnoreCase(targetUserCol.name)) {
-                        if (!coworkersForDay.contains(emp.name)) {
-                            coworkersForDay.add(emp.name);
-                        }
+                    // Wszyscy koledzy pracujący w danym dniu (poza kolumną samego użytkownika)
+                    if (emp.colIndex != targetUserCol.colIndex) {
+                        otherShiftsForDay.add(gs);
                         Shift empShift = new Shift(
                                 dateStr,
                                 info.startTime,
                                 info.endTime,
-                                info.description != null ? info.description : "",
+                                info.description != null && !info.description.isEmpty() ? info.description : effCategory,
                                 true,
                                 false,
                                 effCategory
@@ -224,7 +222,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                 }
             }
 
-            dailyCrewMap.put(dateStr, coworkersForDay);
+            dailyOtherGlobalShiftsMap.put(dateStr, otherShiftsForDay);
         }
 
         // 4. Budujemy obiekty Shift dla docelowego użytkownika
@@ -245,23 +243,22 @@ public class NewFormatExcelParser implements ScheduleParser {
 
             if (info.isShift) {
                 String userCat = determineEffectiveCategory(targetUserCol.position, info.category, info.isClosingShift);
+                String userDesc = (info.description != null && !info.description.isEmpty()) ? info.description : userCat;
                 Shift userShift = new Shift(
                         dateStr,
                         info.startTime,
                         info.endTime,
-                        info.description != null ? info.description : "",
+                        userDesc,
                         true,
                         false,
                         userCat
                 );
                 userShift.setClosingShift(info.isClosingShift);
 
-                List<String> coworkers = dailyCrewMap.get(dateStr);
-                if (coworkers != null && !coworkers.isEmpty()) {
-                    userShift.setClosingCrew(String.join(", ", coworkers));
-                } else {
-                    userShift.setClosingCrew("");
-                }
+                List<GlobalShift> otherShifts = dailyOtherGlobalShiftsMap.get(dateStr);
+                String overlappingCrew = com.asystent.kinowy.utils.ShiftUtils.buildOverlappingCrewString(
+                        info.startTime, info.endTime, userCat, "", otherShifts);
+                userShift.setClosingCrew(overlappingCrew);
 
                 targetUserShifts.add(userShift);
                 scheduleByName.get(targetUserCol.name).add(userShift);
@@ -274,7 +271,7 @@ public class NewFormatExcelParser implements ScheduleParser {
                         "WOLNE",
                         false,
                         false,
-                        "UNKNOWN"
+                        "WOLNE"
                 );
                 userShift.setClosingCrew("");
                 targetUserShifts.add(userShift);
@@ -324,8 +321,12 @@ public class NewFormatExcelParser implements ScheduleParser {
     }
 
     private String determineEffectiveCategory(String position, String parsedCategory, boolean isClosing) {
+        if (parsedCategory != null && ("OPEN".equals(parsedCategory) || "ZAMEK".equals(parsedCategory)
+                || "MIĘDZYZMIANA".equals(parsedCategory) || "INNE (TMS)".equals(parsedCategory))) {
+            return parsedCategory;
+        }
         if (isLeadershipPosition(position)) {
-            return isClosing ? "TL (ZAMEK)" : "TL";
+            return isClosing ? "ZAMEK" : "OPEN";
         }
         if (position != null && !position.trim().isEmpty()) {
             String pLower = position.trim().toLowerCase(Locale.ROOT);
@@ -333,7 +334,7 @@ public class NewFormatExcelParser implements ScheduleParser {
             if (pLower.contains("kasa")) return "KASA";
             if (pLower.contains("tms") || pLower.contains("projekcj")) return "INNE (TMS)";
         }
-        return parsedCategory != null ? parsedCategory : "OBSŁUGA";
+        return parsedCategory != null ? parsedCategory : "OPEN";
     }
 
     /**
@@ -667,7 +668,7 @@ public class NewFormatExcelParser implements ScheduleParser {
             int startHour = Integer.parseInt(closeOdMatcher.group(1));
             int startMin = closeOdMatcher.group(2) != null ? Integer.parseInt(closeOdMatcher.group(2)) : 0;
             String startTime = String.format(Locale.US, "%02d:%02d", startHour, startMin);
-            return new ParsedShiftInfo(startTime, "01:00", true, originalText, "ZAMEK");
+            return new ParsedShiftInfo(startTime, "01:00", true, "ZAMEK", "ZAMEK");
         }
 
         // 2b. open do HH (np. "open do 16", "open do 15:30")
@@ -676,7 +677,7 @@ public class NewFormatExcelParser implements ScheduleParser {
             int endHour = Integer.parseInt(openDoMatcher.group(1));
             int endMin = openDoMatcher.group(2) != null ? Integer.parseInt(openDoMatcher.group(2)) : 0;
             String endTime = String.format(Locale.US, "%02d:%02d", endHour, endMin);
-            return new ParsedShiftInfo("09:00", endTime, false, originalText, "OBSŁUGA");
+            return new ParsedShiftInfo("09:00", endTime, false, "OPEN", "OPEN");
         }
 
         // 2c. Zakres HH-HH (np. "14-22", "12.30-20.30", "10/18", "8 12-20 8", "TMS paczki 17–22")
@@ -695,9 +696,19 @@ public class NewFormatExcelParser implements ScheduleParser {
                 String startTime = String.format(Locale.US, "%02d:%02d", startHour, startMin);
                 String endTime = String.format(Locale.US, "%02d:%02d", endHour, endMin);
                 boolean isClosing = endHour <= 5 || endHour >= 23;
-                String desc = (originalText.substring(0, rangeMatcher.start()) + originalText.substring(rangeMatcher.end())).trim();
-                String category = isClosing ? "ZAMEK" : "OBSŁUGA";
-                if (lower.contains("tms")) category = "INNE (TMS)";
+                String rawRem = (originalText.substring(0, rangeMatcher.start()) + originalText.substring(rangeMatcher.end())).trim();
+                String cleanDesc = rawRem.replaceAll("\\b\\d{1,2}\\b", "").trim();
+                String category;
+                if (lower.contains("tms")) {
+                    category = "INNE (TMS)";
+                } else if (isClosing) {
+                    category = "ZAMEK";
+                } else if (startHour <= 9) {
+                    category = "OPEN";
+                } else {
+                    category = "MIĘDZYZMIANA";
+                }
+                String desc = !cleanDesc.isEmpty() ? cleanDesc : category;
                 return new ParsedShiftInfo(startTime, endTime, isClosing, desc, category);
             }
         }
@@ -705,14 +716,14 @@ public class NewFormatExcelParser implements ScheduleParser {
         // ── KROK 3: Generyczne open/close (contains — obsługuje szum cyfr OCR) ──
         // Szkolenie/TMS open: "szk open", "open szk TMS", "8 open 8", "open"
         if (lower.contains("open")) {
-            String category = lower.contains("tms") ? "INNE (TMS)" : "OBSŁUGA";
-            String desc = lower.contains("szk") ? text : "";
+            String category = lower.contains("tms") ? "INNE (TMS)" : "OPEN";
+            String desc = lower.contains("szk") ? "OPEN (SZK)" : category;
             return new ParsedShiftInfo("09:00", "17:00", false, desc, category);
         }
 
         // Szkolenie/generyczne close: "szk close", "close 8", "8 close", "8 close 8"
         if (lower.contains("close")) {
-            String desc = lower.contains("szk") ? text : "";
+            String desc = lower.contains("szk") ? "ZAMEK (SZK)" : "ZAMEK";
             return new ParsedShiftInfo("17:00", "01:00", true, desc, "ZAMEK");
         }
 
@@ -736,9 +747,9 @@ public class NewFormatExcelParser implements ScheduleParser {
                 int endH = (h + duration) % 24;
                 String startTime = String.format(Locale.US, "%02d:%02d", h, m);
                 String endTime = String.format(Locale.US, "%02d:%02d", endH, m);
-                return new ParsedShiftInfo(startTime, endTime, true, text, "ZAMEK");
+                return new ParsedShiftInfo(startTime, endTime, true, "ZAMEK", "ZAMEK");
             }
-            return new ParsedShiftInfo("17:00", "01:00", true, text, "ZAMEK");
+            return new ParsedShiftInfo("17:00", "01:00", true, "ZAMEK", "ZAMEK");
         }
 
         // ── KROK 5: Inne niesprecyzowane (np. "TMS paczki", "MS playlisty") ────

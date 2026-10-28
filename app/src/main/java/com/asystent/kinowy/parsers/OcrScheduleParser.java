@@ -366,13 +366,13 @@ public class OcrScheduleParser implements ScheduleParser {
                     int diff = Math.abs(roleCell.getBoundingBox().centerX() - nameElement.getBoundingBox().centerX());
                     if (diff < minDiff && diff < 200) { // Tolerancja dopasowania w kolumnie
                         minDiff = diff;
-                        String roleText = roleCell.getText().toLowerCase();
-                        if (roleText.contains("team leader") || roleText.contains("tl")) {
+                        String roleText = roleCell.getText().toLowerCase(Locale.ROOT);
+                        if (roleText.contains("team") || roleText.contains("leader") || roleText.contains("leoder") || roleText.contains("tl")) {
                             roleSuffix = " (TL)";
+                        } else if (roleText.contains("z-ca") || roleText.contains("zastępca") || roleText.contains("deputy") || roleText.equals("dm")) {
+                            roleSuffix = " (Deputy)";
                         } else if (roleText.contains("manager") || roleText.contains("menadżer") || roleText.contains("kierownik")) {
                             roleSuffix = " (Manager)";
-                        } else if (roleText.contains("z-ca") || roleText.contains("zastępca") || roleText.contains("deputy")) {
-                            roleSuffix = " (Deputy)";
                         }
                     }
                 }
@@ -494,7 +494,7 @@ public class OcrScheduleParser implements ScheduleParser {
             String dateStr = String.format(Locale.US, "%04d-%02d-%02d", currentYear, monthValue, dayNum);
             if (!allDates.contains(dateStr)) allDates.add(dateStr);
 
-            List<String> coworkersForDay = new ArrayList<>();
+            List<GlobalShift> otherShiftsForDay = new ArrayList<>();
 
             Map<Text.Line, List<Text.Line>> personToCells = new HashMap<>();
 
@@ -547,7 +547,7 @@ public class OcrScheduleParser implements ScheduleParser {
                 if (isTargetUser && !info.isShift) {
                     Log.d(TAG, "[" + dateStr + "] KACPER WOLNE — rawText='" + rawText + "'");
                 } else if (isTargetUser) {
-                    Log.d(TAG, "[" + dateStr + "] Kacper zmiana: '" + rawText + "' → " + info.startTime + "-" + info.endTime);
+                    Log.d(TAG, "[" + dateStr + "] Kacper zmiana: '" + rawText + "' → " + info.startTime + "-" + info.endTime + " (" + info.category + ")");
                 }
 
                 if (info.isShift) {
@@ -555,9 +555,11 @@ public class OcrScheduleParser implements ScheduleParser {
                     gs.setManuallyEdited(false);
                     allGlobalShifts.add(gs);
 
+                    String effDesc = (info.description != null && !info.description.isEmpty()) ? info.description : info.category;
+
                     if (isTargetUser) {
                         Shift userShift = new Shift(
-                                dateStr, info.startTime, info.endTime, info.description != null ? info.description : "",
+                                dateStr, info.startTime, info.endTime, effDesc,
                                 true, false, info.category
                         );
                         userShift.setClosingShift(info.isClosingShift);
@@ -576,7 +578,16 @@ public class OcrScheduleParser implements ScheduleParser {
                             if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
                         }
                     } else {
-                        if (!coworkersForDay.contains(empName)) coworkersForDay.add(empName);
+                        otherShiftsForDay.add(gs);
+                        Shift empShift = new Shift(
+                                dateStr, info.startTime, info.endTime, effDesc,
+                                true, false, info.category
+                        );
+                        empShift.setClosingShift(info.isClosingShift);
+                        empShift.setClosingCrew("");
+                        if (scheduleByName.containsKey(empName)) {
+                            scheduleByName.get(empName).add(empShift);
+                        }
                     }
                 } else if (isTargetUser) {
                      Shift userShift = new Shift(dateStr, "", "", "WOLNE", false, false, "WOLNE");
@@ -604,15 +615,30 @@ public class OcrScheduleParser implements ScheduleParser {
                 String n = uniqueNamesMap.containsKey(targetUserElement) ? uniqueNamesMap.get(targetUserElement) : targetUserElement.getText().trim();
                 if (scheduleByName.containsKey(n)) scheduleByName.get(n).add(userShift);
             }
-            // Po iteracji po wszystkich osobach, uzupełniamy closingCrew dla shift Kacpra (nigdy null)
-            String crewJoined = coworkersForDay.isEmpty() ? "" : String.join(", ", coworkersForDay);
+            // Po iteracji po wszystkich osobach, uzupełniamy closingCrew WYŁĄCZNIE dla zmian nakładających się czasowo
             for (int si = targetUserShifts.size() - 1; si >= 0; si--) {
-                if (targetUserShifts.get(si).getDate() != null &&
-                        targetUserShifts.get(si).getDate().equals(dateStr)) {
-                    targetUserShifts.get(si).setClosingCrew(crewJoined);
+                Shift us = targetUserShifts.get(si);
+                if (us.getDate() != null && us.getDate().equals(dateStr)) {
+                    if (us.isWorkDay()) {
+                        String overlappingCrew = com.asystent.kinowy.utils.ShiftUtils.buildOverlappingCrewString(
+                                us.getStartTime(), us.getEndTime(), us.getCategory(), "", otherShiftsForDay);
+                        us.setClosingCrew(overlappingCrew);
+                    } else {
+                        us.setClosingCrew("");
+                    }
                     break;
                 }
             }
+        }
+
+        String latestDate = allDates.isEmpty() ? null : allDates.get(allDates.size() - 1);
+        List<com.asystent.kinowy.models.ActiveEmployee> detectedEmployees = new ArrayList<>();
+        for (String fn : foundNames) {
+            boolean isLeader = com.asystent.kinowy.utils.ReplacementFinder.isLeadershipCategory(fn);
+            String empRole = isLeader
+                    ? com.asystent.kinowy.models.ActiveEmployee.ROLE_TL
+                    : com.asystent.kinowy.models.ActiveEmployee.ROLE_EMPLOYEE;
+            detectedEmployees.add(new com.asystent.kinowy.models.ActiveEmployee(fn, true, empRole, latestDate));
         }
 
         ScheduleParseResult parseResult = new ScheduleParseResult(
@@ -625,6 +651,7 @@ public class OcrScheduleParser implements ScheduleParser {
                 "OCR ML Kit"
         );
         parseResult.setTargetUserShifts(targetUserShifts);
+        parseResult.setDetectedEmployees(detectedEmployees);
 
         int shiftCount = targetUserShifts.size();
         Log.d(TAG, "============ PODSUMOWANIE PARSOWANIA OCR ============");

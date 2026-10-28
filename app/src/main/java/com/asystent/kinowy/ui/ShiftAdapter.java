@@ -89,15 +89,20 @@ public class ShiftAdapter extends RecyclerView.Adapter<ShiftAdapter.ShiftViewHol
         holder.tvHours.setText(hours);
 
         String desc = shift.getDescription();
-        String shortDesc = "";
+        String shortDesc;
 
-        if (desc != null && !desc.isEmpty()) {
-            // Wyciągamy sam typ (np. "BAR" z "BAR (14:00-22:00)") dla każdego przypadku
-            shortDesc = desc.contains("(") ? desc.substring(0, desc.indexOf("(")).trim() : desc;
+        if (!shift.isWorkDay() || "WOLNE".equalsIgnoreCase(desc) || "WOLNE".equalsIgnoreCase(shift.getCategory())) {
+            shortDesc = "WOLNE";
+        } else {
+            String rawType = (desc != null && !desc.isEmpty())
+                    ? (desc.contains("(") ? desc.substring(0, desc.indexOf("(")).trim() : desc)
+                    : shift.getCategory();
+            shortDesc = com.asystent.kinowy.utils.ShiftUtils.resolveShiftType(
+                    shift.getStartTime(), shift.getEndTime(), rawType);
         }
 
         if (shift.isReplacement()) {
-            // Dodajemy ikonkę zastępstwa przed krótką nazwą (np. "🔄 BAR")
+            // Dodajemy ikonkę zastępstwa przed krótką nazwą (np. "🔄 OPEN")
             holder.tvDescription.setText("🔄 " + shortDesc);
             holder.tvDescription.setVisibility(View.VISIBLE);
             holder.itemView.setAlpha(0.4f); // Mocniej przygaszamy kartę (40% widoczności)
@@ -111,7 +116,7 @@ public class ShiftAdapter extends RecyclerView.Adapter<ShiftAdapter.ShiftViewHol
         }
 
         // ═══════════════════════════════════════════════════════════
-        // 🌙 Algorytm Zamków — ikona + ekipa zamykająca
+        // 🌙 Algorytm Zamków — ikona + ekipa na zmianie (overlap)
         // ═══════════════════════════════════════════════════════════
         if (shift.isClosingShift()) {
             holder.tvMoonIcon.setVisibility(View.VISIBLE);
@@ -120,7 +125,7 @@ public class ShiftAdapter extends RecyclerView.Adapter<ShiftAdapter.ShiftViewHol
         }
 
         String crew = shift.getClosingCrew();
-        if (crew != null && !crew.isEmpty()) {
+        if (shift.isWorkDay() && !"WOLNE".equalsIgnoreCase(shortDesc) && crew != null && !crew.isEmpty()) {
             holder.tvClosingCrew.setText("🧑‍🤝‍🧑 Ekipa: " + crew);
             holder.tvClosingCrew.setVisibility(View.VISIBLE);
         } else {

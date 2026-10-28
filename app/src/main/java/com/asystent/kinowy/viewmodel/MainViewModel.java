@@ -203,8 +203,58 @@ public class MainViewModel extends AndroidViewModel {
                                 latestDatePerEmp.put(key, date);
                             }
                         }
-                        if (com.asystent.kinowy.utils.ReplacementFinder.isLeadershipCategory(gs.getCategory())) {
+                        if (com.asystent.kinowy.utils.ReplacementFinder.isLeadershipCategory(gs.getCategory())
+                                || com.asystent.kinowy.utils.ReplacementFinder.isLeadershipCategory(name)) {
                             tlEmployees.add(key);
+                        }
+                    }
+
+                    // Normalizacja zapisanych zmian użytkownika: nazewnictwo OPEN / ZAMEK / MIĘDZYZMIANA
+                    // oraz przeliczenie closingCrew wyłącznie na podstawie faktycznego nakładania godzin
+                    android.content.SharedPreferences userPrefs = application
+                            .getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE);
+                    String myUserName = userPrefs.getString("user_name", "Kacper").trim();
+                    List<Shift> existingShifts = com.asystent.kinowy.db.AppDatabase.getInstance(application)
+                            .shiftDao().getAllShiftsSync();
+                    if (existingShifts != null) {
+                        for (Shift s : existingShifts) {
+                            if (s == null || s.getDate() == null) continue;
+                            boolean isWork = s.isWorkDay()
+                                    && s.getStartTime() != null && !s.getStartTime().trim().isEmpty()
+                                    && s.getEndTime() != null && !s.getEndTime().trim().isEmpty()
+                                    && !"WOLNE".equalsIgnoreCase(s.getCategory())
+                                    && !"WOLNE".equalsIgnoreCase(s.getDescription());
+                            if (isWork) {
+                                String newType = com.asystent.kinowy.utils.ShiftUtils.resolveShiftType(
+                                        s.getStartTime(), s.getEndTime(), s.getCategory());
+                                List<GlobalShift> dayGs = globalShiftDao.getShiftsByDate(s.getDate());
+                                String newCrew = com.asystent.kinowy.utils.ShiftUtils.buildOverlappingCrewString(
+                                        s.getStartTime(), s.getEndTime(), newType, myUserName, dayGs);
+                                boolean needsUpdate = false;
+                                if (!newType.equals(s.getCategory())) {
+                                    s.setCategory(newType);
+                                    needsUpdate = true;
+                                }
+                                if (s.getDescription() == null || s.getDescription().isEmpty()
+                                        || "OBSŁUGA".equalsIgnoreCase(s.getDescription())
+                                        || "TL".equalsIgnoreCase(s.getDescription())
+                                        || s.getDescription().matches("^[0-9\\s]+$")) {
+                                    s.setDescription(newType);
+                                    needsUpdate = true;
+                                }
+                                if (s.getClosingCrew() == null || !newCrew.equals(s.getClosingCrew())) {
+                                    s.setClosingCrew(newCrew);
+                                    needsUpdate = true;
+                                }
+                                if (needsUpdate) {
+                                    com.asystent.kinowy.db.AppDatabase.getInstance(application)
+                                            .shiftDao().update(s);
+                                }
+                            } else if (s.getClosingCrew() != null && !s.getClosingCrew().isEmpty()) {
+                                s.setClosingCrew("");
+                                com.asystent.kinowy.db.AppDatabase.getInstance(application)
+                                        .shiftDao().update(s);
+                            }
                         }
                     }
 
@@ -539,11 +589,12 @@ public class MainViewModel extends AndroidViewModel {
                 // Odfiltruj własne imię z listy współpracowników
                 android.content.SharedPreferences prefs = getApplication()
                         .getSharedPreferences("asystent_kinowy_prefs", android.content.Context.MODE_PRIVATE);
-                String myName = prefs.getString("user_name", "").trim();
-                if (!myName.isEmpty() && overlapping != null && !overlapping.isEmpty()) {
+                String myName = prefs.getString("user_name", "Kacper").trim();
+                if (overlapping != null && !overlapping.isEmpty()) {
                     List<GlobalShift> filtered = new java.util.ArrayList<>();
                     for (GlobalShift gs : overlapping) {
-                        if (!myName.equalsIgnoreCase(gs.getName() != null ? gs.getName().trim() : "")) {
+                        if (!com.asystent.kinowy.utils.ShiftUtils.isSelfShift(
+                                gs, myName, shift.getStartTime(), shift.getEndTime())) {
                             filtered.add(gs);
                         }
                     }

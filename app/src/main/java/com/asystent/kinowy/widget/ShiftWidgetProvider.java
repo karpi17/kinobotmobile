@@ -137,7 +137,7 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
         }
 
         // ═══ Stanowisko + ikona alarmu ═══
-        String cat = shift.getCategory();
+        String cat = ShiftUtils.resolveShiftType(shift.getStartTime(), shift.getEndTime(), shift.getCategory());
         boolean hasCategory = cat != null && !cat.isEmpty() && !"UNKNOWN".equals(cat);
         boolean hasAlarm = checkAlarm(globalShiftDao, shift.getDate(), shift.getStartTime(), userName);
         if (hasCategory || hasAlarm) {
@@ -154,16 +154,21 @@ public class ShiftWidgetProvider extends AppWidgetProvider {
             views.setViewVisibility(R.id.widget_category_row, View.GONE);
         }
 
-        // ═══ Ekipa (bez siebie samego) ═══
+        // ═══ Ekipa (bez siebie samego, tylko nakładające się godziny) ═══
         try {
-            String resolvedUser = userName.isEmpty() ? null : userName;
-            List<GlobalShift> crew = resolvedUser != null
-                    ? globalShiftDao.getCrewByDateExcluding(shift.getDate(), resolvedUser)
-                    : globalShiftDao.getShiftsByDate(shift.getDate());
-
-            List<GlobalShift> overlapping = ShiftUtils.getOverlappingShifts(
+            String resolvedUser = userName.isEmpty() ? "Kacper" : userName;
+            List<GlobalShift> crew = globalShiftDao.getShiftsByDate(shift.getDate());
+            List<GlobalShift> overlappingRaw = ShiftUtils.getOverlappingShifts(
                     shift.getStartTime(), shift.getEndTime(), crew);
-            if (overlapping != null && !overlapping.isEmpty()) {
+            List<GlobalShift> overlapping = new java.util.ArrayList<>();
+            if (overlappingRaw != null) {
+                for (GlobalShift gs : overlappingRaw) {
+                    if (!ShiftUtils.isSelfShift(gs, resolvedUser, shift.getStartTime(), shift.getEndTime())) {
+                        overlapping.add(gs);
+                    }
+                }
+            }
+            if (!overlapping.isEmpty()) {
                 views.setTextViewText(R.id.widget_crew, ShiftUtils.formatWidgetCrew(overlapping));
                 views.setViewVisibility(R.id.widget_crew, View.VISIBLE);
             } else {

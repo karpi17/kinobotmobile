@@ -328,14 +328,18 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
 
         Executors.newSingleThreadExecutor().execute(() -> {
             List<GlobalShift> dailyShifts = viewModel.getGlobalShiftsByDate(date);
-            List<GlobalShift> displayList;
+            List<GlobalShift> displayList = new ArrayList<>();
+            String myName = ctx
+                    .getSharedPreferences("asystent_kinowy_prefs",
+                            android.content.Context.MODE_PRIVATE)
+                    .getString("user_name", "Kacper").trim();
 
             if (fullDayMode) {
-                displayList = new ArrayList<>();
                 if (dailyShifts != null) {
                     for (GlobalShift gs : dailyShifts) {
                         if (gs != null && !gs.isDeleted()
-                                && gs.getStartTime() != null && !gs.getStartTime().trim().isEmpty()) {
+                                && gs.getStartTime() != null && !gs.getStartTime().trim().isEmpty()
+                                && !com.asystent.kinowy.utils.ShiftUtils.isSelfShift(gs, myName, myStart, myEnd)) {
                             displayList.add(gs);
                         }
                     }
@@ -343,15 +347,10 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             } else {
                 List<GlobalShift> overlapping = com.asystent.kinowy.utils.ShiftUtils
                         .getOverlappingShifts(myStart, myEnd, dailyShifts);
-                String myName = ctx
-                        .getSharedPreferences("asystent_kinowy_prefs",
-                                android.content.Context.MODE_PRIVATE)
-                        .getString("user_name", "").trim();
-                displayList = new ArrayList<>();
                 if (overlapping != null) {
                     for (GlobalShift gs : overlapping) {
-                        if (myName.isEmpty() || !myName.equalsIgnoreCase(
-                                gs.getName() != null ? gs.getName().trim() : "")) {
+                        if (gs != null && !gs.isDeleted()
+                                && !com.asystent.kinowy.utils.ShiftUtils.isSelfShift(gs, myName, myStart, myEnd)) {
                             displayList.add(gs);
                         }
                     }
@@ -366,8 +365,8 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
                     TextView tvTitle = sectionLayout.findViewById(R.id.tv_coworkers_section_title);
                     if (tvTitle != null) {
                         tvTitle.setText(fullDayMode
-                                ? "👥 Pełna obsada dnia (" + finalList.size() + ")"
-                                : "👥 Współpracownicy w tym czasie (" + finalList.size() + ")");
+                                ? "👥 Obsada w tym dniu (" + finalList.size() + ")"
+                                : "👥 Współpracownicy na mojej zmianie (" + finalList.size() + ")");
                     }
                     coworkerAdapter.setData(finalList, dailyShifts);
                 });
@@ -596,7 +595,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         TextInputEditText etEnd = dialogView.findViewById(R.id.et_shift_end);
         android.widget.AutoCompleteTextView etCategory = dialogView.findViewById(R.id.et_shift_category);
         
-        String[] defaultCategories = new String[]{"TL", "KIEROWNIK", "BAR", "OW", "SP", "ZAMEK", "OBSŁUGA", "MANAGER"};
+        String[] defaultCategories = new String[]{"OPEN", "ZAMEK", "MIĘDZYZMIANA", "TL", "KIEROWNIK", "BAR", "OW", "SP", "INNE (TMS)"};
         android.widget.ArrayAdapter<String> categoryAdapter = new android.widget.ArrayAdapter<>(
                 requireContext(),
                 android.R.layout.simple_dropdown_item_1line,
@@ -655,12 +654,12 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
             }
         });
 
-        // Sekcja współpracowników (Overlap lub Cały dzień — Tryb Kierownika)
+        // Sekcja współpracowników (w szczegółach zmiany domyślnie pokazujemy całą obsadę dnia z opcją przełączenia)
         LinearLayout layoutCoworkers = dialogView.findViewById(R.id.layout_coworkers_section);
         RecyclerView rvCoworkers = dialogView.findViewById(R.id.rv_coworkers_list);
         com.google.android.material.button.MaterialButton btnToggleFullDay =
                 dialogView.findViewById(R.id.btn_toggle_full_day_crew);
-        final boolean[] showFullDayCrew = new boolean[]{false};
+        final boolean[] showFullDayCrew = new boolean[]{true};
 
         final CoworkerAdapter[] adapterHolder = new CoworkerAdapter[1];
         CoworkerAdapter coworkerAdapter = new CoworkerAdapter((gs, pos) -> {
@@ -683,6 +682,7 @@ public class ScheduleFragment extends Fragment implements ShiftAdapter.OnShiftCl
         };
 
         if (btnToggleFullDay != null) {
+            btnToggleFullDay.setText("W moim czasie");
             btnToggleFullDay.setOnClickListener(v -> {
                 showFullDayCrew[0] = !showFullDayCrew[0];
                 btnToggleFullDay.setText(showFullDayCrew[0] ? "W moim czasie" : "Cały dzień");

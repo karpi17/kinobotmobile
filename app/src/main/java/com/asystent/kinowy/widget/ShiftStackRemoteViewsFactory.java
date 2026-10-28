@@ -113,7 +113,7 @@ class ShiftStackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFact
         rv.setTextViewText(R.id.widget_stack_time, moon + shift.getStartTime() + " – " + shift.getEndTime());
 
         // Stanowisko (chip)
-        String cat = shift.getCategory();
+        String cat = ShiftUtils.resolveShiftType(shift.getStartTime(), shift.getEndTime(), shift.getCategory());
         if (cat != null && !cat.isEmpty() && !"UNKNOWN".equals(cat)) {
             rv.setTextViewText(R.id.widget_stack_category, cat);
             rv.setViewVisibility(R.id.widget_stack_category, View.VISIBLE);
@@ -134,14 +134,21 @@ class ShiftStackRemoteViewsFactory implements RemoteViewsService.RemoteViewsFact
         } catch (Exception ignored) {}
         rv.setViewVisibility(R.id.widget_stack_alarm, hasAlarm ? View.VISIBLE : View.GONE);
 
-        // Ekipa (bez własnego imienia)
+        // Ekipa (bez własnego imienia, tylko nakładające się godziny)
         try {
-            List<GlobalShift> crew = userName.isEmpty()
-                    ? globalShiftDao.getShiftsByDate(shift.getDate())
-                    : globalShiftDao.getCrewByDateExcluding(shift.getDate(), userName);
-            List<GlobalShift> overlapping = ShiftUtils.getOverlappingShifts(
+            String resolvedUser = userName.isEmpty() ? "Kacper" : userName;
+            List<GlobalShift> crew = globalShiftDao.getShiftsByDate(shift.getDate());
+            List<GlobalShift> overlappingRaw = ShiftUtils.getOverlappingShifts(
                     shift.getStartTime(), shift.getEndTime(), crew);
-            if (overlapping != null && !overlapping.isEmpty()) {
+            List<GlobalShift> overlapping = new ArrayList<>();
+            if (overlappingRaw != null) {
+                for (GlobalShift gs : overlappingRaw) {
+                    if (!ShiftUtils.isSelfShift(gs, resolvedUser, shift.getStartTime(), shift.getEndTime())) {
+                        overlapping.add(gs);
+                    }
+                }
+            }
+            if (!overlapping.isEmpty()) {
                 rv.setTextViewText(R.id.widget_stack_crew, ShiftUtils.formatWidgetCrew(overlapping));
                 rv.setViewVisibility(R.id.widget_stack_crew, View.VISIBLE);
             } else {

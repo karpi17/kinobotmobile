@@ -141,8 +141,126 @@ public final class ShiftUtils {
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Pomocnicze
+    // Pomocnicze i klasyfikacja zmian (OPEN / ZAMEK / MIĘDZYZMIANA)
     // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Wyznacza czytelny typ zmiany na podstawie godzin i kategorii:
+     * OPEN, ZAMEK, MIĘDZYZMIANA lub WOLNE (z zachowaniem specyficznych np. BAR, KASA, INNE (TMS)).
+     */
+    public static String resolveShiftType(String startTime, String endTime, String rawCategory) {
+        if (startTime == null || startTime.trim().isEmpty()
+                || endTime == null || endTime.trim().isEmpty()) {
+            return "WOLNE";
+        }
+
+        if (rawCategory != null && !rawCategory.trim().isEmpty()) {
+            String u = rawCategory.trim().toUpperCase(java.util.Locale.ROOT);
+            if ("WOLNE".equals(u)) return "WOLNE";
+            if (u.contains("TMS") || u.contains("PROJEKCJ")) return "INNE (TMS)";
+            if ("BAR".equals(u) || "BAR (ZAMEK)".equals(u) || "KASA".equals(u) || "KAWIARNIA".equals(u)) {
+                return u;
+            }
+            if ("OPEN".equals(u) || "ZAMEK".equals(u) || "MIĘDZYZMIANA".equals(u)) {
+                return u;
+            }
+        }
+
+        try {
+            int sMin = toMinutes(startTime.trim());
+            int eMin = toMinutes(endTime.trim());
+            int sHour = sMin / 60;
+            int eHour = eMin / 60;
+
+            boolean isClose = (eMin <= sMin) || (eHour <= 5) || (eHour >= 23)
+                    || (rawCategory != null && rawCategory.toUpperCase(java.util.Locale.ROOT).contains("ZAMEK"));
+            if (isClose) {
+                return "ZAMEK";
+            }
+            if (sHour <= 9) {
+                return "OPEN";
+            }
+            return "MIĘDZYZMIANA";
+        } catch (Exception ignored) {
+            return rawCategory != null && !rawCategory.trim().isEmpty() ? rawCategory.trim() : "OBSŁUGA";
+        }
+    }
+
+    /**
+     * Sprawdza, czy dany rekord {@link GlobalShift} należy do samego zalogowanego użytkownika
+     * (uwzględniając sufiks roli np. "Kacper (TL)", ale odróżniając np. "Kacper (Deputy)" o innych godzinach).
+     */
+    public static boolean isSelfShift(GlobalShift gs, String myName, String myStart, String myEnd) {
+        if (gs == null || gs.getName() == null) return false;
+        String gName = gs.getName().trim().toLowerCase(java.util.Locale.ROOT);
+        String uName = (myName != null && !myName.trim().isEmpty())
+                ? myName.trim().toLowerCase(java.util.Locale.ROOT)
+                : "";
+        if (uName.isEmpty()) return false;
+
+        if (gName.equals(uName) || gName.equals(uName + " (tl)")) return true;
+        String firstWord = uName.split("\\s+")[0];
+        if (gName.equals(firstWord) || gName.equals(firstWord + " (tl)")) return true;
+
+        // Jeśli użytkownik nie ma w nazwie "deputy"/"manager", a globalShift ma "(deputy)" lub "(manager)",
+        // to jest to inna osoba o tym samym imieniu (np. Kacper Deputy vs Kacper TL)
+        boolean userIsDeputyOrMgr = uName.contains("deputy") || uName.contains("manager");
+        boolean gsIsDeputyOrMgr = gName.contains("deputy") || gName.contains("manager");
+        if (!userIsDeputyOrMgr && gsIsDeputyOrMgr) {
+            return false;
+        }
+
+        if (gName.startsWith(firstWord + " ") || uName.startsWith(gName + " ")) {
+            if (myStart != null && myStart.equals(gs.getStartTime())
+                    && myEnd != null && myEnd.equals(gs.getEndTime())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Buduje listę współpracowników wyświetlanych na kafelku zmiany użytkownika.
+     * Zwraca WYŁĄCZNIE osoby, których zmiana realnie nakłada się czasowo ze zmianą użytkownika.
+     */
+    public static String buildOverlappingCrewString(
+            String myStart, String myEnd, String myCategory, String myName, List<GlobalShift> dailyShifts) {
+        if (myStart == null || myStart.trim().isEmpty()
+                || myEnd == null || myEnd.trim().isEmpty()
+                || dailyShifts == null || dailyShifts.isEmpty()) {
+            return "";
+        }
+
+        List<GlobalShift> overlapping = getOverlappingShifts(myStart, myEnd, dailyShifts);
+        if (overlapping.isEmpty()) return "";
+
+        String myType = resolveShiftType(myStart, myEnd, myCategory);
+        List<String> crewLabels = new ArrayList<>();
+
+        for (GlobalShift gs : overlapping) {
+            if (gs == null || gs.isDeleted() || gs.getName() == null || gs.getName().trim().isEmpty()) continue;
+            if (isSelfShift(gs, myName, myStart, myEnd)) continue;
+
+            String personName = gs.getName().trim();
+            String gsType = resolveShiftType(gs.getStartTime(), gs.getEndTime(), gs.getCategory());
+            String label;
+            if (gsType.equalsIgnoreCase(myType)) {
+                label = personName;
+            } else if ("MIĘDZYZMIANA".equals(gsType)
+                    && gs.getStartTime() != null && gs.getStartTime().length() >= 2
+                    && gs.getEndTime() != null && gs.getEndTime().length() >= 2) {
+                label = personName + " [" + gs.getStartTime().substring(0, 2) + "-" + gs.getEndTime().substring(0, 2) + "]";
+            } else {
+                label = personName + " [" + gsType + "]";
+            }
+
+            if (!crewLabels.contains(label)) {
+                crewLabels.add(label);
+            }
+        }
+
+        return crewLabels.isEmpty() ? "" : String.join(", ", crewLabels);
+    }
 
     /**
      * Konwertuje czas (HH:mm) na liczbę minut od północy.

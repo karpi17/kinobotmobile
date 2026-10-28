@@ -119,7 +119,11 @@ public class DashboardCarouselAdapter extends RecyclerView.Adapter<RecyclerView.
                 layoutNoData.setVisibility(View.GONE);
                 tvDate.setText(shift.getDate());
                 tvTime.setText(shift.getStartTime() + " - " + shift.getEndTime());
-                chipDesc.setText(shift.getDescription() != null && !shift.getDescription().isEmpty() ? shift.getDescription() : shift.getCategory());
+                String resolvedType = com.asystent.kinowy.utils.ShiftUtils.resolveShiftType(
+                        shift.getStartTime(), shift.getEndTime(),
+                        shift.getDescription() != null && !shift.getDescription().isEmpty()
+                                ? shift.getDescription() : shift.getCategory());
+                chipDesc.setText(resolvedType);
 
                 // 🌙 Zamek
                 if (tvMoonIcon != null) {

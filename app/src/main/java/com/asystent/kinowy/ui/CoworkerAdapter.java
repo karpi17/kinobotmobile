@@ -118,7 +118,8 @@ public class CoworkerAdapter extends RecyclerView.Adapter<CoworkerAdapter.ViewHo
         StringBuilder badgeBuilder = new StringBuilder();
         if (isOpen) {
             badgeBuilder.append("☀️ OPEN");
-            if (!"OBSŁUGA".equalsIgnoreCase(cat) && !"?".equals(cat) && !"UNKNOWN".equalsIgnoreCase(cat)) {
+            if (!"OBSŁUGA".equalsIgnoreCase(cat) && !"OPEN".equalsIgnoreCase(cat)
+                    && !"?".equals(cat) && !"UNKNOWN".equalsIgnoreCase(cat)) {
                 badgeBuilder.append(" • ").append(cat);
             }
         } else if (isClose) {
@@ -127,7 +128,12 @@ public class CoworkerAdapter extends RecyclerView.Adapter<CoworkerAdapter.ViewHo
                 badgeBuilder.append(" • ").append(cat);
             }
         } else {
-            badgeBuilder.append(cat);
+            if ("MIĘDZYZMIANA".equalsIgnoreCase(cat) || "OBSŁUGA".equalsIgnoreCase(cat)
+                    || "TL".equalsIgnoreCase(cat) || "?".equals(cat) || "UNKNOWN".equalsIgnoreCase(cat)) {
+                badgeBuilder.append("🕐 MIĘDZYZMIANA");
+            } else {
+                badgeBuilder.append(cat);
+            }
         }
         holder.tvCategory.setText(badgeBuilder.toString());
 
@@ -144,8 +150,13 @@ public class CoworkerAdapter extends RecyclerView.Adapter<CoworkerAdapter.ViewHo
     }
 
     private boolean isOpeningShift(GlobalShift gs) {
+        if (gs.getCategory() != null && gs.getCategory().toUpperCase(Locale.ROOT).contains("OPEN")) {
+            return true;
+        }
         LocalTime start = parseTimeSafe(gs.getStartTime());
-        if (start == null || start.isAfter(LocalTime.of(11, 0))) return false;
+        if (start == null) return false;
+        if (!start.isAfter(LocalTime.of(9, 30))) return true;
+        if (start.isAfter(LocalTime.of(11, 0))) return false;
         String catKey = normalizeCategoryKey(gs.getCategory());
         LocalTime earliest = earliestStartByCategory.get(catKey);
         return earliest != null && start.equals(earliest);

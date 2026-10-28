@@ -65,15 +65,19 @@ public class ReplacementFinder {
     }
 
     /**
-     * Sprawdza, czy dana kategoria/stanowisko wskazuje na rolę kierowniczą / Team Leader.
+     * Sprawdza, czy dana kategoria/stanowisko/nazwa wskazuje na rolę kierowniczą / Team Leader.
      */
     public static boolean isLeadershipCategory(String category) {
         if (category == null) return false;
         String c = category.trim().toLowerCase(Locale.ROOT);
         return c.contains("tl")
                 || c.contains("leader")
+                || c.contains("leoder")
                 || c.contains("kierownik")
                 || c.contains("manager")
+                || c.contains("menadżer")
+                || c.contains("deputy")
+                || c.contains("z-ca")
                 || c.contains("dyrektor");
     }
 
@@ -140,6 +144,9 @@ public class ReplacementFinder {
             for (ActiveEmployee ae : activeEmployeesList) {
                 if (ae != null && ae.getName() != null) {
                     employeeMap.put(ae.getName().trim().toLowerCase(Locale.ROOT), ae);
+                    if (ae.isLeadership() && isSameUser(ae.getName(), trimmedUser)) {
+                        targetIsLeadership = true;
+                    }
                 }
             }
         }
@@ -157,8 +164,11 @@ public class ReplacementFinder {
                 if (personName.isEmpty()) continue;
                 allKnownPersons.add(personName);
 
-                if (isLeadershipCategory(gs.getCategory())) {
+                if (isLeadershipCategory(gs.getCategory()) || isLeadershipCategory(personName)) {
                     historicalLeaders.add(personName.toLowerCase(Locale.ROOT));
+                    if (isSameUser(personName, trimmedUser)) {
+                        targetIsLeadership = true;
+                    }
                 }
 
                 if (gs.getDate() != null && gs.getDate().length() >= 10) {
@@ -219,6 +229,7 @@ public class ReplacementFinder {
 
             // 3. Weryfikacja kwalifikacji / roli:
             boolean isPersonLeader = historicalLeaders.contains(personKey)
+                    || isLeadershipCategory(person)
                     || (dictEntry != null && dictEntry.isLeadership());
 
             // REGULA: Jeśli zmiana jest kierownicza/TL, zwykły pracownik NIE MOŻE jej wziąć!
@@ -305,8 +316,9 @@ public class ReplacementFinder {
         }
 
         // Sortowanie: dla zwykłych zmian preferujemy zwykłych pracowników, dla TL — alfabetycznie
+        final boolean finalTargetIsLeadership = targetIsLeadership;
         candidates.sort((a, b) -> {
-            if (!targetIsLeadership) {
+            if (!finalTargetIsLeadership) {
                 // Regular employees first, leaders second
                 if (a.isLeadership() != b.isLeadership()) {
                     return a.isLeadership() ? 1 : -1;
@@ -357,6 +369,12 @@ public class ReplacementFinder {
         String p = person.trim().toLowerCase(Locale.ROOT);
         String u = currentUserName.trim().toLowerCase(Locale.ROOT);
         if (p.isEmpty() || u.isEmpty()) return false;
-        return p.equals(u) || p.startsWith(u + " ") || u.startsWith(p + " ");
+        if (p.equals(u)) return true;
+        boolean userIsDeputyOrMgr = u.contains("deputy") || u.contains("manager");
+        boolean personIsDeputyOrMgr = p.contains("deputy") || p.contains("manager");
+        if (!userIsDeputyOrMgr && personIsDeputyOrMgr) {
+            return false;
+        }
+        return p.startsWith(u + " ") || u.startsWith(p + " ");
     }
 }

@@ -53,7 +53,8 @@ public class NovemberExcelTest {
             assertEquals("2026-11-02", d2.getDate());
             assertEquals("09:00", d2.getStartTime());
             assertEquals("17:00", d2.getEndTime());
-            assertEquals("TL", d2.getCategory());
+            assertEquals("OPEN", d2.getCategory());
+            assertEquals("", d2.getClosingCrew()); // Kasia i Sara mają ZAMEK 17-01, więc brak overlapu na OPEN
 
             // 6 listopada (piątek) - Kacper TL ma close od 18 (18:00 - 01:00)
             Shift d6 = kacperShifts.get(5);
@@ -61,14 +62,16 @@ public class NovemberExcelTest {
             assertEquals("18:00", d6.getStartTime());
             assertEquals("01:00", d6.getEndTime());
             assertTrue(d6.isClosingShift());
-            assertEquals("TL (ZAMEK)", d6.getCategory());
+            assertEquals("ZAMEK", d6.getCategory());
+            assertTrue(d6.getClosingCrew().contains("Zosia"));
+            assertTrue(!d6.getClosingCrew().contains("Dominik")); // Dominik ma OPEN 09-17
 
             // 7 listopada (sobota) - Kacper TL ma 12-20
             Shift d7 = kacperShifts.get(6);
             assertEquals("2026-11-07", d7.getDate());
             assertEquals("12:00", d7.getStartTime());
             assertEquals("20:00", d7.getEndTime());
-            assertEquals("TL", d7.getCategory());
+            assertEquals("MIĘDZYZMIANA", d7.getCategory());
         }
     }
 }
